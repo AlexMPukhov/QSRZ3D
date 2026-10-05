@@ -431,6 +431,20 @@ on the command line, for example `./qsrz run.in grid.dr=0.005 time.steps=10`.
 Threads are set with `OMP_NUM_THREADS`, and Kokkos options (e.g.
 `--kokkos-device-id=1`) are passed through.
 
+**Troubleshooting builds.**
+
+- *Segmentation fault right after the start-up summary* (after the `Beam ...` lines), with a
+  backtrace in `std::filesystem::path::~path` and headers from `/usr/include/c++/8`: the code
+  was compiled by an old system GCC 8 but runs with the `libstdc++` of a newer GCC (e.g. from a
+  loaded module, visible with `ldd qsrz | grep stdc++`). GCC 8's `std::filesystem` is not
+  binary compatible with GCC >= 9. CMake now refuses GCC < 9; build in a fresh directory with
+  `CXX=$(which g++) CC=$(which gcc) cmake -B build ...` and check that CMake reports the
+  intended compiler (`The CXX compiler identification is GNU 15...`).
+- CMake caches the compiler of a build directory: after loading a different compiler module,
+  always configure a new directory instead of re-running CMake in the old one.
+- The MPI version is built whenever CMake finds MPI, also when you run without `mpirun`; use
+  `-DQSRZ_ENABLE_MPI=OFF` for a purely serial (OpenMP-only) build.
+
 ## 5. Input reference
 
 Input files are plain `key = value` lines; `#` starts a comment. Keys that are
