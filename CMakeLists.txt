@@ -7,6 +7,16 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# std::filesystem: GCC 8 has a different (experimental) ABI for it in libstdc++fs.  A GCC 8
+# build that later loads a newer libstdc++.so (e.g. from a gcc module in LD_LIBRARY_PATH)
+# crashes in std::filesystem::path.  CMake takes `c++` from the PATH, which on many
+# clusters is the old system compiler even when a newer gcc module is loaded.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
+  message(FATAL_ERROR "QSRZ needs GCC >= 9 (found ${CMAKE_CXX_COMPILER_VERSION}: ${CMAKE_CXX_COMPILER}).\n"
+    "If a newer gcc module is loaded, configure a fresh build directory with\n"
+    "  CXX=$(which g++) CC=$(which gcc) cmake -B build ...")
+endif()
+
 # Kokkos: either an installed Kokkos (-DKokkos_ROOT=...) or fetched from GitHub.
 # The backend (OpenMP, CUDA, HIP, SYCL, Serial) is chosen when Kokkos is built,
 # e.g. -DKokkos_ENABLE_CUDA=ON -DKokkos_ARCH_AMPERE80=ON  for an A100.

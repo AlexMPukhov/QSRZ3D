@@ -365,7 +365,11 @@ ranks slower; the pipeline then runs at the speed of the slowest rank.
 
 ## 4. Building
 
-Requirements: CMake ≥ 3.18, a C++17 compiler, and Kokkos ≥ 4.0. If Kokkos is
+Requirements: CMake ≥ 3.18, a C++17 compiler (GCC ≥ 9, Clang ≥ 9), and Kokkos ≥ 4.0.
+CMake uses the compiler `c++` found in the PATH; on clusters this is often the old system
+compiler even with a newer gcc module loaded. Then set it explicitly in a fresh build
+directory: `CXX=$(which g++) CC=$(which gcc) cmake -B build ...` (CMake stops with an error for
+GCC < 9, whose `std::filesystem` is incompatible with newer runtime libraries). If Kokkos is
 not found, CMake downloads Kokkos 4.4.01 and builds it with the options you
 pass.
 
