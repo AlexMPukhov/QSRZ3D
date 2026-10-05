@@ -1,0 +1,5 @@
+reference uniform dr=0.00025 (N=32000): max n_i(r=0) in witness = 2.3, max (Er-Bth)/r at r=0.01: 0.878 (unperturbed ion column: 0.5)
+grid             N   sweep  err n_i(0)  err Wr(.01)  err Wr(.03)  err Ez(0)
+u001           800   1.53s     25.501%       7.108%       1.621%     1.709%
+u0005         1600   3.06s     12.101%       2.455%       0.582%     0.471%
+stretched      512   1.07s      5.255%       0.330%       0.057%     0.098%

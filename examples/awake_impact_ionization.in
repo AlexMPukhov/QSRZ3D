@@ -1,0 +1,48 @@
+# ---------------------------------------------------------------------------
+# Impact ionization of a neutral gas by a long proton bunch (AWAKE-like, no laser, no seed):
+# a 400 GeV bunch (3e11 protons, sigma_r = 0.2 mm, sigma_z = 6 cm) enters an argon cell,
+# n_gas = 7e14 cm^-3.  The protons ionize the gas (Bethe cross-section, 1.6e-18 cm^2 for Ar),
+# the free-electron density grows along the bunch to ~2e-4 n_gas, and the plasma made by the
+# bunch itself responds (its plasma period is comparable to the bunch length).
+#   n0 = n_gas = 7e14 cm^-3:  c/omega_p = 0.2 mm,  E0 = 2.54 GV/m
+# The bunch fields (~10 MV/m) are far below the tunnelling threshold of argon (~10 GV/m),
+# so field ionization stays off here (it would be computed, and found to be zero).
+# Expected ionized fraction at the bunch tail: sigma N / (2 pi sigma_r^2) = 1.9e-4.
+# ---------------------------------------------------------------------------
+units.n0_cm3   = 7e14
+
+grid.type      = regions
+grid.rmax      = 10.0
+grid.regions   = 3.0:0.02  10.0:0.1
+grid.max_ratio = 1.05
+
+xi.min  = -900      # bunch centre at xi = 0, +-3 sigma_z
+xi.max  = 900
+xi.step = 0.25
+
+time.dt    = 500     # 10 cm
+time.steps = 2
+
+plasma.species = electrons argon
+electrons.ppc  = 0               # no plasma ahead of the bunch: all electrons come from ionization
+argon.element  = Ar
+argon.z_max    = 2
+argon.ppc      = 4
+argon.ionization.nsplit = 20000  # quantum 5e-5 of each atom: ~4 emissions per atom on the axis
+plasma.rmax    = 10.0
+
+beams = protons
+protons.charge      = 1
+protons.mass        = 1836.15
+protons.n0          = 0.0113    # 3e11 protons: N / ((2 pi)^1.5 sigma_r^2 sigma_z) / n0
+protons.sigma_r     = 1.0
+protons.profile     = gaussian
+protons.sigma_xi    = 300
+protons.xi0         = 0
+protons.gamma       = 427
+protons.espread     = 3.5e-4
+protons.emit_n      = 0.0175
+protons.nparticles  = 1000000
+
+output.dir        = out_awake_impact
+output.every      = 1

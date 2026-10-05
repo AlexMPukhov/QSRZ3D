@@ -1,0 +1,33 @@
+1. Algebraic identities (1e6 random u, E, B)
+  [PASS] note eqs.(19)-(36) == Higuera-Cary        max rel. diff 5.0e-14
+  [PASS] note eqs.(2)-(18) with nu=0 == Vay (2008) max rel. diff 0.0e+00
+2. Gyration in uniform B (gamma = 10, 64 steps per exact period, 100 periods)
+    Boris   phase error after 100 periods -0.5039 rad,  | |u|-|u0| |/|u0| = 1.1e-15
+    Vay     phase error after 100 periods -0.5039 rad,  | |u|-|u0| |/|u0| = 2.8e-13
+    HC      phase error after 100 periods +0.2450 rad,  | |u|-|u0| |/|u0| = 2.2e-14
+    IMP     phase error after 100 periods +0.2450 rad,  | |u|-|u0| |/|u0| = 6.5e-13
+3. Force-free particle, E = v_d B (gamma_d = 2e4, B = 60, dt = 20: tau = B dt/gamma ~ 0.06)
+    Boris   spurious transverse momentum after 1000 steps: 4.53e+02  (gamma change 1.14e+04)
+    Vay     spurious transverse momentum after 1000 steps: 0.00e+00  (gamma change 0.00e+00)
+  [PASS]   force-free drift preserved
+    HC      spurious transverse momentum after 1000 steps: 0.00e+00  (gamma change 0.00e+00)
+  [PASS]   force-free drift preserved
+    IMP     spurious transverse momentum after 1000 steps: 0.00e+00  (gamma change 0.00e+00)
+  [PASS]   force-free drift preserved
+    IMP_RR  spurious transverse momentum after 1000 steps: 0.00e+00  (gamma change 0.00e+00)
+  [PASS]   force-free drift preserved
+4. Betatron in ion channel + self-field pair (gamma = 2e4, S = 1e4), 20 periods
+     64 steps/period  Boris   x(20 T)/x0 = -1.03257   amplitude in last period / x0 = 1.03257
+     64 steps/period  Vay     x(20 T)/x0 = +0.99876   amplitude in last period / x0 = 0.99883
+     64 steps/period  HC      x(20 T)/x0 = +0.99876   amplitude in last period / x0 = 0.99883
+     64 steps/period  IMP     x(20 T)/x0 = +0.99876   amplitude in last period / x0 = 0.99883
+     16 steps/period  Boris   x(20 T)/x0 = +5520.57976   amplitude in last period / x0 = 28204.98808
+     16 steps/period  Vay     x(20 T)/x0 = +0.68142   amplitude in last period / x0 = 0.99995
+     16 steps/period  HC      x(20 T)/x0 = +0.68146   amplitude in last period / x0 = 0.99995
+     16 steps/period  IMP     x(20 T)/x0 = +0.68146   amplitude in last period / x0 = 0.99995
+5. Radiation reaction, imp_rr: betatron electron gamma0 = 1e4, r_beta = 0.1, rr = 2e-7
+    32 steps/period: Delta H = 220.1230,  sum nu u.v dt = 220.1457,  analytic (1/12) r_e k_p g^2 r_b^2 t = 222.1441
+  [PASS]   energy loss consistent with LL rate (0.0%)
+     8 steps/period: Delta H = 253.2681,  sum nu u.v dt = 253.3924,  analytic (1/12) r_e k_p g^2 r_b^2 t = 222.1441
+  [PASS]   energy loss consistent with LL rate (0.0%)
+ALL TESTS PASSED (0 failures)

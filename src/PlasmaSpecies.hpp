@@ -1,0 +1,111 @@
+// Plasma macro-particles advanced in xi = t - z.
+//
+// Particles are Cartesian in the transverse plane (x, y, p_x, p_y) with
+// Delta = gamma - p_z; with only the m = 0 mode each particle represents a ring
+// (fields are axisymmetric), with m = 1 the rings are split into n_theta
+// particles at different azimuths.  Momenta in units of m_s c.
+//   q^ = q/m,  W+ = W_x + i W_y = (E_x - B_y) + i (E_y + B_x) = -(d_x + i d_y) psi
+//   dx/dxi   = p_x / Delta,               dy/dxi = p_y / Delta
+//   dp_x/dxi = q^ [ gamma W_x/Delta + B_y + p_y B_z/Delta ]
+//   dp_y/dxi = q^ [ gamma W_y/Delta - B_x - p_x B_z/Delta ]
+//   dDelta/dxi = q^ [ (p_perp . W_perp)/Delta - E_z ]
+// integrated with Adams-Bashforth of order 1..5.
+#pragma once
+
+#include "Ionization.hpp"
+#include "Parser.hpp"
+#include "Profiles.hpp"
+#include "RadialGrid.hpp"
+#include "SliceData.hpp"
+
+#include <string>
+#include <vector>
+
+namespace qsrz {
+
+class Config;
+
+struct ABCoeffs {
+    Real c[5] = {0, 0, 0, 0, 0};
+    int order = 1;
+};
+ABCoeffs make_ab(int order);
+
+struct IonizeResult {
+    double born_w = 0, born_wp2 = 0;   // sum of weights of the new electrons, sum w p_perp^2
+    long born_n = 0;                   // number of new macro-electrons
+};
+
+class PlasmaSpecies {
+public:
+    PlasmaSpecies(const Config& cfg, const std::string& name, const RadialGrid& grid, const DensityProfile& prof,
+                  bool mode1);
+
+    void load(Real z, unsigned long long seed);
+
+    // all sources except S
+    void deposit(const SliceSources& s, const SliceFields& f) const;   // f: laser <a^2> (if any)
+    // rho - J_z and rho only (background / neutralisation), all modes
+    void deposit_rho(const MScalar& rhot, const MScalar& rho) const;
+    // S+ (needs W+, E_z, B_z)
+    void deposit_S(const SliceFields& f, const MVector& S) const;
+    // advance slice k -> k+1
+    void push(const SliceFields& f, Real dxi, int k);
+
+    // ---- ionization (species with <name>.element or <name>.ionization_energies_eV)
+    bool ionizable() const { return ionizable_; }
+    const IonSpeciesInfo& ion_info() const { return ion_; }
+    void set_laser(Real k0, bool circular) { ion_.P.laser = true; ion_.P.k0 = k0; ion_.P.circular = circular; }
+    // slice kl (global k) of time step `step`: ionization with the fields f of the slice, beam impact
+    // sources imp(kl, node, 3) (empty: none); new electrons are appended to `prod`
+    IonizeResult ionize(const SliceFields& f, const View3D& imp, int kl, Real dxi, int k, int step, PlasmaSpecies& prod);
+    // charge density sum z w (gamma/Delta) / V of the ions (m = 0) -> out(kl, node, comp)
+    void deposit_charge_state(const View3D& out, int kl, int comp) const;
+    // sum z w and sum w over live particles (mean charge state)
+    void charge_sums(double& zw, double& w) const;
+    void ensure_capacity(int n);   // grow the particle arrays (keeps the contents)
+    int num_loaded() const { return Nload_; }
+
+    const std::string& name() const { return name_; }
+    Real charge() const { return q_; }
+    Real mass() const { return m_; }
+    bool mobile() const { return mobile_; }
+    bool frozen() const { return frozen_; }
+    int  num_particles() const { return Np_; }
+    int  lost_count() const;
+
+    // complete particle state incl. the Adams-Bashforth history (hand-off to the downstream rank)
+    void pack_state(std::vector<double>& buf) const;
+    size_t unpack_state(const double* p);   // returns the number of doubles consumed
+
+    View1D x_, y_, px_, py_, dl_, w_;
+    IView1D fresh_;        // 1: (re)start the Adams-Bashforth history at the next push (born / charge changed)
+    View1D lev_, wq_;      // ionizable species: charge state, split quantum (0: no splitting)
+
+private:
+    std::string name_;
+    const RadialGrid& grid_;
+    DensityProfile prof_;
+    bool m1_ = false;
+    Real q_ = -1, m_ = 1;
+    bool mobile_ = true;
+    int ppc_ = 4;
+    int ntheta_ = 1;
+    Parser uth_;          // thermal momentum spread uth(x,y,z) (m_s c), isotropic
+    Real delta_min_ = 1e-3;
+    Real max_qsa_ = 35;   // particles with gamma/Delta = 1/(1 - v_z) above this are removed (trapped)
+    Real density_factor_ = 1;
+    ABCoeffs ab_;
+    int Np_ = 0;      // active particles (loaded + born in this sweep)
+    int Nload_ = 0;   // loaded at the head of the box
+    int cap_ = 0;     // allocated
+    bool ionizable_ = false;
+    bool frozen_ = false;     // ionizable species with <name>.mobile = 0: particles, but not pushed
+    IonSpeciesInfo ion_;
+    IView1D cnt_e_, cnt_c_;   // ionization scratch (per particle)
+    unsigned long long seed_ = 1;
+    View3D hist_;   // (order, 5, Np): dx, dy, dpx, dpy, dDelta
+    IView1D lost_;
+};
+
+} // namespace qsrz

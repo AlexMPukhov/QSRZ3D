@@ -1,0 +1,9 @@
+build/
+build-*/
+gpu-deps/
+build-gpu-configure.log
+validation/out_*
+__pycache__/
+*.pyc
+validation/q_*
+validation/d_*

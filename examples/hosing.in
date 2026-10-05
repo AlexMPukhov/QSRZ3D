@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# Electron hosing of a long, slightly offset driver in the blowout regime
+# (needs azimuthal mode 1).  Normalised units, xi = t - z.
+# ---------------------------------------------------------------------------
+modes = 1                 # m = 0 and m = 1
+solver.picard = 3         # iterations for the chi_1 coupling of B_perp
+
+grid.type      = regions
+grid.rmax      = 6.0
+grid.regions   = 0.5:0.005  2.0:0.01  6.0:0.04
+grid.max_ratio = 1.05
+
+xi.min  = 0
+xi.max  = 9
+xi.step = 0.01
+
+time.dt    = 5            # betatron period 2 pi sqrt(2 gamma) ~ 200
+time.steps = 120
+
+pusher.ab_order = 3
+
+plasma.species = electrons
+electrons.ppc    = 4
+electrons.ntheta = 8      # plasma particles per ring (>= 4 with modes = 1)
+
+beams = driver
+driver.n0         = 5
+driver.sigma_r    = 0.25
+driver.profile    = flattop
+driver.length     = 6.0
+driver.xi0        = 4.0
+driver.gamma      = 500
+driver.emit_n     = 0.05
+driver.x_slope    = 0.002         # centroid tilt x_c = x_slope (xi - xi0): seed of the instability
+                                  # (a uniform offset is no seed in a uniform plasma: translation invariance)
+driver.nparticles = 400000        # multiple of nsym x 2
+driver.nsym       = 4             # quiet start: removes the m=1 sampling noise
+driver.mirror_y   = 1             # keep the y-symmetry exactly (tilt is along x only)
+driver.cut        = 3
+
+output.dir         = out_hosing
+output.every       = 40
+output.beam_slices = 60

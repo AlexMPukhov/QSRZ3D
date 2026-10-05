@@ -1,0 +1,82 @@
+# QSRZ — notes for Claude sessions
+
+Read this first in every session. It records the project state, so work does not depend on
+conversation history (which can be lost, e.g. when a turn is cut off). README.md is the full
+user documentation (physics, numerics, inputs, outputs, validation); this file is the
+working state and the rules for developing.
+
+## Workflow rules
+- **Start of a session:** read this file, then `git status` and `git log --oneline | head`.
+  Uncommitted changes = an earlier session was interrupted: inspect them (`git diff`) and
+  verify before building on them; tell Alexander what was found.
+- **At every milestone** (a feature works, a bug is fixed, validation passes): commit with a
+  descriptive message and update "Status" / "Open issues" below in the same commit.
+  Commit unfinished work too, as `WIP: ...`, before long runs or at the end of a turn.
+- Never report a feature as done without running the relevant validation section.
+- Deliverable to Alexander: `qsrz.zip` of the repo (no build dirs, no outputs), see below.
+
+## Project
+Quasi-static axisymmetric (m = 0, optional m = 1) PIC code for plasma wakefield
+acceleration, LCODE-like, written in C++17 with Kokkos (OpenMP / CUDA / HIP), MPI
+decomposition along xi with pipelined time steps, optional openPMD output.
+Distinctive: arbitrary non-uniform radial grid (finite-element Laplacian on hat functions),
+explicit B_perp solve, Adams–Bashforth plasma push, several beam pushers. Alexander plans to
+publish it.
+
+Code map: README §10. Key files: `src/Simulation.cpp` (sweep, MPI hand-off, output),
+`src/PlasmaSpecies.cpp` (deposit, push, ionization kernel), `src/Beam.cpp`,
+`src/FieldSolver.cpp`, `src/Laser.cpp` (envelope solver), `src/Ionization.*` (ADK, Bethe,
+element table, counter-based RNG).
+
+## Build and test (this container)
+```bash
+cmake -B build -DKokkos_ENABLE_OPENMP=ON \
+      -DKokkos_ROOT=/home/claude/kokkos-install -DopenPMD_ROOT=/home/claude/openpmd-install
+cmake --build build -j2 && (cd build && ctest)
+export OMP_PROC_BIND=false            # needed here, otherwise OpenMP runs badly
+cd validation && bash run_validation.sh > validation_results.txt   # ~10 min, sections 1-12
+```
+CUDA compile check (no GPU here):
+`PATH=/usr/local/lib/python3.11/dist-packages/nvidia/cu13/bin:$PATH CUDA_HOME=/usr/local/lib/python3.11/dist-packages/nvidia/cu13 make -C build-cuda -j2 qsrz`
+
+MPI tests: `mpirun --allow-run-as-root --oversubscribe -np P -x OMP_NUM_THREADS=1 ...`,
+compare with `validation/cmp_runs.py serial_dir mpi_dir 1e-6`. Serial reference needs
+`beams.xi_shape=ngp` for bit-identity.
+
+Package for delivery:
+`cd /home/claude && zip -qr qsrz.zip qsrz -x 'qsrz/build/*' 'qsrz/build-*/*' 'qsrz/gpu-deps/*' 'qsrz/.git/*' '*/__pycache__/*' 'qsrz/validation/out_*' 'qsrz/validation/q_*' 'qsrz/validation/d_*'`
+
+## Invariants (do not break)
+- MPI results bit-identical to serial (with ngp beam shape) unless beam particles move
+  between ranks. Particle creation uses prefix sums for indices; random numbers come from
+  a counter-based hash of (seed, step, slice, species, particle, draw), never from
+  thread-dependent generators.
+- E_z is the exact discrete xi-derivative of psi; Gauss's law holds in the laser region.
+- Every new feature gets a validation section in `run_validation.sh` against an independent
+  (analytic or Python) reference, and a row in README §7.
+
+## Status (2026-10-05)
+Done and validated (README §7, `validation/validation_results.txt`):
+- core solver, non-uniform grid, m = 1 mode, mobile ions, parsed profiles, MPI, openPMD,
+  CUDA compiles (never run on a real GPU);
+- laser envelope solver (Crank–Nicolson in t, trapezoid in xi), ponderomotive force on
+  plasma and beams; `pusher.max_qsa_factor` (gamma/Delta > 35 removed as trapped);
+- ionization: ADK by plasma/beam fields, period-averaged ADK by the laser (numerical
+  quadrature, drift momentum from sampled birth phase), Bethe beam impact ionization 0 -> 1,
+  `nsplit` quanta for small fractions; examples `awake_impact_ionization.in`,
+  `lwfa_ionization.in`. Immobile ionizable ions do not contribute to chi.
+
+## Open issues
+- Wake-T 0.9.1 disagrees with QSRZ by up to 11 % (a0 = 2) and 27 % (a0 = 4) for a single
+  laser wake; QSRZ satisfies Gauss's law, Wake-T does not in the laser region. Needs a
+  full-PIC comparison (e.g. FBPIC) before trusting a0 >~ 2.
+- Bethe M^2, C tabulated only for Ar; Rb (AWAKE) needs literature values.
+- Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
+  no ionization energy loss.
+- No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
+- Never run on a GPU.
+
+## Next steps (proposed to Alexander)
+- Convert trapped plasma electrons into beam particles (charge w * dt per step) so that
+  ionization injection can be followed through acceleration.
+- Benedetti phase-corrected envelope; m = 1 laser envelope.

@@ -1,0 +1,38 @@
+# Laser wakefield in a gas that the laser ionizes itself: helium (n_He = 5e17 cm^-3, i.e. n_e = 1e18
+# when fully ionized) doped with 1 % nitrogen.  0.8 um laser, a0 = 4, k_p w0 = 4 (as lwfa_laser.in).
+#  - He 1+, 2+ and N 1+ ... 5+ are ionized in the leading edge of the pulse (E_L = 31 a.u. at the peak),
+#    so the wake is driven in a plasma the laser has just made (the ionization energy is not taken
+#    from the laser: the envelope model has no ionization loss term);
+#  - N 6+ and 7+ (K shell, 552 and 667 eV) are ionized only near the peak of the pulse, inside the
+#    bubble: these electrons are born with Delta = 1 deep in the wake potential and many of them are
+#    trapped (ionization injection).  A quasi-static code cannot follow trapped electrons: they are
+#    removed and counted in the log ("plasma particles removed as trapped").
+# Diagnostics: ionization.txt (electrons born per step, mean charge state at the end of the box),
+# nz_helium / nz_nitrogen in the field files (ion charge densities).
+units.n0_cm3 = 1e18
+grid.type      = regions
+grid.rmax      = 14
+grid.regions   = 1:0.005  5:0.02  14:0.1
+grid.max_ratio = 1.05
+xi.min  = 0
+xi.max  = 16
+xi.step = 0.01
+time.dt    = 20
+time.steps = 20
+plasma.species = electrons helium nitrogen
+electrons.ppc  = 0              # no plasma ahead of the laser
+helium.element = He
+helium.density = 0.5            # atoms / n0
+helium.ppc     = 2
+nitrogen.element = N
+nitrogen.density = 0.005
+nitrogen.ppc     = 2
+laser.lambda0_um = 0.8
+laser.a0     = 4.0
+laser.w0     = 4.0
+laser.L0     = 2.3
+laser.xi0    = 7.0
+laser.polarization = linear
+beams =
+output.every      = 10
+output.dir = out_lwfa_ionization
