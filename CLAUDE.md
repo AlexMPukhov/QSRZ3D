@@ -76,7 +76,7 @@ Done and validated (README §7, `validation/validation_results.txt`):
 - Build pitfall (solved 2026-10-05): on Alexander's cluster CMake took /usr/bin/c++ = GCC 8.5 while
   the gcc/15.3 module's libstdc++ was loaded at run time -> crash in std::filesystem::path.
   CMake now refuses GCC < 9; use CXX=$(which g++). Branch wip/posix-io (POSIX writes,
-  output.io switch) was a wrong lead and has been deleted.
+  output.io switch) was a wrong lead; delete it on GitHub (session cannot delete branches).
 - Wake-T 0.9.1 disagrees with QSRZ by up to 11 % (a0 = 2) and 27 % (a0 = 4) for a single
   laser wake; QSRZ satisfies Gauss's law, Wake-T does not in the laser region. Needs a
   full-PIC comparison (e.g. FBPIC) before trusting a0 >~ 2.
