@@ -43,8 +43,8 @@ MPI tests: `mpirun --allow-run-as-root --oversubscribe -np P -x OMP_NUM_THREADS=
 compare with `validation/cmp_runs.py serial_dir mpi_dir 1e-6`. Serial reference needs
 `beams.xi_shape=ngp` for bit-identity.
 
-Package for delivery:
-`cd /home/claude && zip -qr qsrz.zip qsrz -x 'qsrz/build/*' 'qsrz/build-*/*' 'qsrz/gpu-deps/*' 'qsrz/.git/*' '*/__pycache__/*' 'qsrz/validation/out_*' 'qsrz/validation/q_*' 'qsrz/validation/d_*'`
+Package for delivery (includes .git, so the history survives the container):
+`cd /home/claude && zip -qr qsrz.zip qsrz -x 'qsrz/build/*' 'qsrz/build-*/*' 'qsrz/gpu-deps/*' '*/__pycache__/*' 'qsrz/validation/out_*' 'qsrz/validation/q_*' 'qsrz/validation/d_*'`
 
 ## Invariants (do not break)
 - MPI results bit-identical to serial (with ngp beam shape) unless beam particles move
