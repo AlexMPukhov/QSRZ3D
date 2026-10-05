@@ -13,6 +13,9 @@ working state and the rules for developing.
   descriptive message and update "Status" / "Open issues" below in the same commit.
   Commit unfinished work too, as `WIP: ...`, before long runs or at the end of a turn.
 - Never report a feature as done without running the relevant validation section.
+- **Remote:** `origin` = https://github.com/AlexMPukhov/QSRZ3D (private). Push after every
+  commit (`git push origin main`); a new session starts by cloning it. Commit email:
+  alex.m.pukhov@gmail.com (GitHub account of Alexander).
 - Deliverable to Alexander: `qsrz.zip` of the repo (no build dirs, no outputs), see below.
 
 ## Project
