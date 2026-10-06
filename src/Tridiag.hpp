@@ -9,7 +9,7 @@
 
 #include "Types.hpp"
 
-namespace qsrz {
+namespace quarz {
 
 enum class TridiagMethod { Auto, Thomas, PCR };
 
@@ -30,4 +30,4 @@ private:
     View2D pa_, pb_, pc_, pd_;  // PCR ping-pong buffers (2 x M)
 };
 
-} // namespace qsrz
+} // namespace quarz

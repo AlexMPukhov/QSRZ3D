@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -84,4 +84,4 @@ private:
     void finalize(const std::vector<Real>& nodes);
 };
 
-} // namespace qsrz
+} // namespace quarz

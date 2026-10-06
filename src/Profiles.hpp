@@ -7,7 +7,7 @@
 #include <vector>
 #include <utility>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -48,4 +48,4 @@ private:
     Parser parser_;
 };
 
-} // namespace qsrz
+} // namespace quarz

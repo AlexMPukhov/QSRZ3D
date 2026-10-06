@@ -13,7 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 namespace {
 const char* const ION_LOG_NOTE =
@@ -122,7 +122,7 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     bguard = View2D("bguard", M, 3);
 
     if (comm_.root()) {
-        std::cout << "QSRZ quasi-static RZ code, Kokkos execution space: " << ExecSpace::name() << "\n";
+        std::cout << "QUARZ - Quasistatic Arbitrary-resolution RZ code, Kokkos execution space: " << ExecSpace::name() << "\n";
         if (P > 1)
             std::cout << "MPI: " << P << " ranks, xi decomposition with time pipelining, " << K / P
                       << "-" << (K + P - 1) / P << " slices per rank\n";
@@ -982,4 +982,4 @@ void Simulation::run() {
     if (comm_.root()) std::cout << "Total run time " << tmax << " s\n";
 }
 
-} // namespace qsrz
+} // namespace quarz

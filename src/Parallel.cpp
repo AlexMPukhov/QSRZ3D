@@ -8,11 +8,11 @@
 #include <fstream>
 #include <stdexcept>
 
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
 #include <mpi.h>
 #endif
 
-namespace qsrz {
+namespace quarz {
 
 Comm& Comm::world() {
     static Comm c;
@@ -21,7 +21,7 @@ Comm& Comm::world() {
 
 void Comm::init(int* argc, char*** argv) {
     Comm& c = world();
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     int provided;
     MPI_Init_thread(argc, argv, MPI_THREAD_FUNNELED, &provided);
     MPI_Comm_rank(MPI_COMM_WORLD, &c.rank_);
@@ -37,7 +37,7 @@ void Comm::init(int* argc, char*** argv) {
 }
 
 void Comm::finalize() {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     Comm& c = world();
     c.wait_send();
     delete static_cast<MPI_Request*>(c.req_);
@@ -47,14 +47,14 @@ void Comm::finalize() {
 }
 
 void Comm::abort(int code) {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     MPI_Abort(MPI_COMM_WORLD, code);
 #endif
     std::exit(code);
 }
 
 void Comm::wait_send() {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     if (pending_) {
         MPI_Wait(static_cast<MPI_Request*>(req_), MPI_STATUS_IGNORE);
         pending_ = false;
@@ -63,7 +63,7 @@ void Comm::wait_send() {
 }
 
 void Comm::isend(int dest, int tag, std::vector<double>&& buf) {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     wait_send();
     sendbuf_ = std::move(buf);
     MPI_Isend(sendbuf_.data(), static_cast<int>(sendbuf_.size()), MPI_DOUBLE, dest, tag, MPI_COMM_WORLD,
@@ -76,7 +76,7 @@ void Comm::isend(int dest, int tag, std::vector<double>&& buf) {
 }
 
 std::vector<double> Comm::recv(int src, int tag) {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     MPI_Status st;
     MPI_Probe(src, tag, MPI_COMM_WORLD, &st);
     int n = 0;
@@ -91,13 +91,13 @@ std::vector<double> Comm::recv(int src, int tag) {
 }
 
 void Comm::barrier() {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
 }
 
 double Comm::allreduce_max(double v) {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     double out;
     MPI_Allreduce(&v, &out, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
     return out;
@@ -107,7 +107,7 @@ double Comm::allreduce_max(double v) {
 }
 
 void Comm::write_at(const std::string& fn, long long offset, const void* data, size_t bytes, long long set_size) {
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
     MPI_File fh;
     std::string name = fn;
     if (MPI_File_open(MPI_COMM_SELF, name.data(), MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fh) != MPI_SUCCESS)
@@ -132,4 +132,4 @@ void Comm::write_at(const std::string& fn, long long offset, const void* data, s
 #endif
 }
 
-} // namespace qsrz
+} // namespace quarz

@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <algorithm>
 
-namespace qsrz {
+namespace quarz {
 
 static std::string trim(const std::string& s) {
     const char* ws = " \t\r\n";
@@ -109,4 +109,4 @@ void Config::print(std::ostream& os) const {
     for (const auto& kv : kv_) os << "  " << kv.first << " = " << kv.second << "\n";
 }
 
-} // namespace qsrz
+} // namespace quarz

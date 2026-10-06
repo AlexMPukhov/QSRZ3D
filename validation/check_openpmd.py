@@ -1,13 +1,13 @@
-"""compare openPMD output with the native QSRZ output of the same run (both written)
+"""compare openPMD output with the native QUARZ output of the same run (both written)
 usage: check_openpmd.py dir [native|uniform]"""
 import sys, glob, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools'))
 import numpy as np, openpmd_api as io
-from qsrz_read import read_fields, read_beam
+from quarz_read import read_fields, read_beam
 d = sys.argv[1]; mode = sys.argv[2] if len(sys.argv) > 2 else 'native'
 ext = glob.glob(d + '/openpmd/data_*')[0].rsplit('.', 1)[1]
 S = io.Series(d + '/openpmd/data_%06T.' + ext, io.Access.read_only)
-n0 = S.get_attribute('qsrz_n0_SI') if 'qsrz_n0_SI' in S.attributes else None
+n0 = S.get_attribute('quarz_n0_SI') if 'quarz_n0_SI' in S.attributes else None
 worst = 0.0
 for n, it in S.iterations.items():
     t = it.time

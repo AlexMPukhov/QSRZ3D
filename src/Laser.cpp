@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 namespace {
 struct Cx { Real re, im; };
@@ -233,4 +233,4 @@ std::array<double, 5> Laser::sums() const {
     return S;
 }
 
-} // namespace qsrz
+} // namespace quarz

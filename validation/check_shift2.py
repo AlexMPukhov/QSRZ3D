@@ -4,7 +4,7 @@ usage: python check_shift2.py ref_dir shift_dir d rmax [ximin ximax]"""
 import sys
 import numpy as np
 sys.path.insert(0, "../tools")
-from qsrz_read import read_fields
+from quarz_read import read_fields
 ref = read_fields(sys.argv[1] + "/fields_000000.bin")
 sh = read_fields(sys.argv[2] + "/fields_000000.bin")
 d, rmax = float(sys.argv[3]), float(sys.argv[4])

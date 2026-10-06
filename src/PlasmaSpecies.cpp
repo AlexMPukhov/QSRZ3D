@@ -6,7 +6,7 @@
 #include <random>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 ABCoeffs make_ab(int order) {
     ABCoeffs ab;
@@ -675,4 +675,4 @@ void PlasmaSpecies::charge_sums(double& zw, double& wsum) const {
         a += w(i) * lev(i); b += w(i); }, zw, wsum);
 }
 
-} // namespace qsrz
+} // namespace quarz

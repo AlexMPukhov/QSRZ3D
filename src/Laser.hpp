@@ -41,7 +41,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Laser {
 public:
@@ -88,4 +88,4 @@ private:
     const FieldSolver& solver_;
 };
 
-} // namespace qsrz
+} // namespace quarz

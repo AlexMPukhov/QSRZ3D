@@ -1,5 +1,5 @@
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_fields
+from quarz_read import read_fields
 import numpy as np
 ref=read_fields(sys.argv[1]+'/fields_000000.bin'); sh=read_fields(sys.argv[2]+'/fields_000000.bin'); d=float(sys.argv[3])
 r,xi=ref['r'],ref['xi']

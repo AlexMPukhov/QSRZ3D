@@ -8,7 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 // ---------------------------------------------------------------------------
 std::vector<Real> RadialGrid::make_uniform(Real R, Real dr) {
@@ -170,4 +170,4 @@ void RadialGrid::write(const std::string& filename) const {
         out << j << " " << r[j] << " " << (j < N ? h[j] : 0.0) << " " << V[j] << "\n";
 }
 
-} // namespace qsrz
+} // namespace quarz

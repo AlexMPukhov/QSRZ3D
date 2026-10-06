@@ -1,10 +1,10 @@
-// QSRZ - quasi-static axisymmetric (r, xi) PIC code with non-uniform radial grid
+// QUARZ - quasi-static axisymmetric (r, xi) PIC code with non-uniform radial grid
 // Common types and constants.
 #pragma once
 
 #include <Kokkos_Core.hpp>
 
-namespace qsrz {
+namespace quarz {
 
 using Real = double;
 
@@ -26,4 +26,4 @@ inline constexpr bool exec_is_host() {
     return Kokkos::SpaceAccessibility<HostSpace, MemSpace>::accessible;
 }
 
-} // namespace qsrz
+} // namespace quarz

@@ -10,7 +10,7 @@
 #include <vector>
 #include <utility>
 
-namespace qsrz {
+namespace quarz {
 
 class Config {
 public:
@@ -41,4 +41,4 @@ private:
     mutable std::set<std::string> used_;
 };
 
-} // namespace qsrz
+} // namespace quarz

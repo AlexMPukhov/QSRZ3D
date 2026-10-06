@@ -1,4 +1,4 @@
-"""Quick-look plots of a QSRZ field file (optional; needs numpy + matplotlib).
+"""Quick-look plots of a QUARZ field file (optional; needs numpy + matplotlib).
 
 usage:  python plot_fields.py out/fields_000000.bin [rmax]
 Writes <file>.png: E_z, (E_r - B_theta) and n_e, plus the on-axis E_z.
@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from qsrz_read import read_fields, xz_plane
+from quarz_read import read_fields, xz_plane
 
 fn = sys.argv[1]
 rmax = float(sys.argv[2]) if len(sys.argv) > 2 else None

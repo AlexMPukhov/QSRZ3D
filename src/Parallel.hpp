@@ -1,4 +1,4 @@
-// Thin communication layer.  With QSRZ_USE_MPI it wraps MPI; without it, it is
+// Thin communication layer.  With QUARZ_USE_MPI it wraps MPI; without it, it is
 // a serial stub (rank 0 of 1), so the rest of the code has a single code path.
 //
 // Used for the pipelined decomposition along xi: messages are plain buffers of
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Comm {
 public:
@@ -46,4 +46,4 @@ private:
     bool pending_ = false;
 };
 
-} // namespace qsrz
+} // namespace quarz

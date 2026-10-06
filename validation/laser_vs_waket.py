@@ -3,7 +3,7 @@
 import sys, os, subprocess, numpy as np, scipy.constants as ct
 os.environ['OPENPMD_VERIFY_HOMOGENEOUS_EXTENTS'] = '0'
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'tools'))
-from qsrz_read import read_fields
+from quarz_read import read_fields
 import openpmd_api as io
 from wake_t import GaussianPulse
 from wake_t.beamline_elements import PlasmaStage
@@ -19,7 +19,7 @@ stage = PlasmaStage(length=1e-6, density=n0, wakefield_model='quasistatic_2d', n
                     r_max=14*s, r_max_plasma=13*s, xi_min=-14*s, xi_max=6*s, n_r=int(os.environ.get('WT_NR',1400)), n_xi=int(os.environ.get('WT_NXI',2000)), ppc=int(os.environ.get('WT_PPC',4)), dz_fields=1e-6, **kw)
 import contextlib, io as pyio
 with contextlib.redirect_stderr(pyio.StringIO()): stage.track(bunch, opmd_diag=True, diag_dir='d_'+tag)
-subprocess.run([os.environ.get('QSRZ', '../build/qsrz'), 'laser_vs_waket.in', f'laser.a0={a0}', f'laser.w0={w0n}', f'laser.L0={L0n}', 'output.dir=q_'+tag] + extra,
+subprocess.run([os.environ.get('QUARZ', '../build/quarz'), 'laser_vs_waket.in', f'laser.a0={a0}', f'laser.w0={w0n}', f'laser.L0={L0n}', 'output.dir=q_'+tag] + extra,
                stdout=subprocess.DEVNULL, env=dict(os.environ, OMP_PROC_BIND='false'))
 S = io.Series(f'd_{tag}/hdf5/data%08T.h5', io.Access.read_only); it = S.iterations[0]
 m = it.meshes['E']; Ez = m['z'].load_chunk(); S.flush(); Ez = Ez[0,0,:]*m['z'].unit_SI/E0
@@ -29,6 +29,6 @@ xw = -z
 ezw = np.interp(xq, xw[::-1], Ez[::-1])
 sel = (xq > -2) & (xq < 6)
 scale = np.abs(ezw[sel]).max()
-print(f'a0={a0}: max|Ez| {scale:.3f}, max |QSRZ - WakeT| / max = {np.abs(f["ez"][sel,0]-ezw[sel]).max()/scale:.3f}')
+print(f'a0={a0}: max|Ez| {scale:.3f}, max |QUARZ - WakeT| / max = {np.abs(f["ez"][sel,0]-ezw[sel]).max()/scale:.3f}')
 for x in (0, 2, 4, 6):
-    k = np.argmin(abs(xq-x)); print(f'   {x}: QSRZ {f["ez"][k,0]:+.4f}  Wake-T {ezw[k]:+.4f}')
+    k = np.argmin(abs(xq-x)); print(f'   {x}: QUARZ {f["ez"][k,0]:+.4f}  Wake-T {ezw[k]:+.4f}')

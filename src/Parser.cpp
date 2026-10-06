@@ -8,7 +8,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 namespace {
 
@@ -309,4 +309,4 @@ bool read_function(const Config& cfg, const std::string& name, int nvars, Parser
     return false;
 }
 
-} // namespace qsrz
+} // namespace quarz

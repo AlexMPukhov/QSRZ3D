@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -103,4 +103,4 @@ private:
     View1D x_, y_, px_, py_, pz_, xi_, w_;
 };
 
-} // namespace qsrz
+} // namespace quarz

@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -144,4 +144,4 @@ std::map<std::string, double> read_constants(const Config& cfg);
 bool read_function(const Config& cfg, const std::string& name, int nvars, Parser& p,
                    const std::vector<std::string>& default_vars, bool allow_plain = false);
 
-} // namespace qsrz
+} // namespace quarz

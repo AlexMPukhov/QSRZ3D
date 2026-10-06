@@ -2,7 +2,7 @@ import sys; sys.path.insert(0, '../tools')
 import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from qsrz_read import read_fields
+from quarz_read import read_fields
 
 fig, ax = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
 # (a) grid comparison: focusing gradient in the pinched witness
@@ -44,5 +44,5 @@ for n in range(0, 401, 50):
         mm = (f['xi'] > x - 10) & (f['xi'] < x + 10); amps[x].append(abs(f['ez'][mm, 0]).max() * 2.54e3)
 for x in amps: a.plot(zs, amps[x], 'o-', label=r'$\xi \approx %d$ (%.0f cm behind seed)' % (x, x * 0.02))
 a.set_xlabel('z [m]'); a.set_ylabel(r'max $|E_z|$ on axis [MV/m]'); a.set_title('Wakefield growth and saturation'); a.legend(fontsize=8)
-fig.savefig('qsrz_validation_summary.png', dpi=130)
+fig.savefig('quarz_validation_summary.png', dpi=130)
 print('ok')

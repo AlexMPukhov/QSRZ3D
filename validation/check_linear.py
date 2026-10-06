@@ -1,4 +1,4 @@
-"""Compare QSRZ against the linear-theory wake of a Gaussian driver in a
+"""Compare QUARZ against the linear-theory wake of a Gaussian driver in a
 conducting cylinder of radius R (Green's function with Dirichlet psi(R)=0).
 
    dn(r,xi)  = Int_{-inf}^{xi} sin(xi-xi') rho_b(r,xi') dxi'
@@ -11,7 +11,7 @@ import sys
 import numpy as np
 from scipy.special import i0e, k0e, erf
 sys.path.insert(0, "../tools")
-from qsrz_read import read_fields
+from quarz_read import read_fields
 
 d = read_fields(sys.argv[1] + "/fields_000000.bin")
 r, xi = d["r"], d["xi"]

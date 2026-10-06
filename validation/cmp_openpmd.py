@@ -1,4 +1,4 @@
-"""compare two openPMD series (HDF5) of QSRZ runs, e.g. serial vs MPI: usage cmp_openpmd.py dirA dirB"""
+"""compare two openPMD series (HDF5) of QUARZ runs, e.g. serial vs MPI: usage cmp_openpmd.py dirA dirB"""
 import sys, numpy as np, openpmd_api as io
 A = io.Series(sys.argv[1] + '/openpmd/data_%06T.h5', io.Access.read_only)
 B = io.Series(sys.argv[2] + '/openpmd/data_%06T.h5', io.Access.read_only)

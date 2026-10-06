@@ -1,4 +1,4 @@
-"""Compare all outputs of two QSRZ runs (e.g. serial vs MPI):
+"""Compare all outputs of two QUARZ runs (e.g. serial vs MPI):
 fields_*.bin, axis_*.txt, beams.txt, slices_*.txt, beam_*.bin (particles sorted).
 Prints the maximum relative difference per file type; exit code 1 if above tol.
 Differences are relative to the field scale (a field and its cos/sin mode parts share
@@ -17,7 +17,7 @@ import numpy as np
 warnings.filterwarnings("ignore", message="Input line")
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
-from qsrz_read import read_beam, read_fields  # noqa: E402
+from quarz_read import read_beam, read_fields  # noqa: E402
 
 a_dir, b_dir = sys.argv[1], sys.argv[2]
 tol = float(sys.argv[3]) if len(sys.argv) > 3 else 1e-10

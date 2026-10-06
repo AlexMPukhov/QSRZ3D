@@ -3,7 +3,7 @@
 // only present when azimuthal mode 1 is enabled.
 #pragma once
 
-namespace qsrz {
+namespace quarz {
 
 // fields for the beam push:  E+ = E_x + i E_y and B+ in V+ modes, E_z and B_z in scalar modes
 enum FieldComp : int {
@@ -20,4 +20,4 @@ enum BeamComp : int {
     B_NC0 = 5, B_NC1 = 15
 };
 
-} // namespace qsrz
+} // namespace quarz

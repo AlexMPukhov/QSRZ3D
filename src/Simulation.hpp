@@ -38,7 +38,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 // diagnostics-only arrays stored per slice
 enum DiagComp : int { D_PSI0 = 0, D_NE0, D_NI0, D_PSI1R, D_PSI1I, D_NE1R, D_NE1I, D_NI1R, D_NI1I, D_NC0 = 3, D_NC1 = 9 };
@@ -119,4 +119,4 @@ private:
     void write_ion_diag(int n);
 };
 
-} // namespace qsrz
+} // namespace quarz

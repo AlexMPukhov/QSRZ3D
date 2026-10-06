@@ -5,7 +5,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 Table1D::Table1D(std::vector<std::pair<double, double>> pts) : pts_(std::move(pts)) {
     std::sort(pts_.begin(), pts_.end());
@@ -60,4 +60,4 @@ double DensityProfile::longitudinal(double z) const {
     return ztab_.empty() ? 1.0 : std::max(0.0, ztab_(z));
 }
 
-} // namespace qsrz
+} // namespace quarz

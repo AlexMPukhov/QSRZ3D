@@ -10,8 +10,8 @@
 #include <random>
 #include <vector>
 
-using namespace qsrz;
-using namespace qsrz::push;
+using namespace quarz;
+using namespace quarz::push;
 
 static int failures = 0;
 static void check(bool ok, const char* what) {

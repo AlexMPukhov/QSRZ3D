@@ -1,8 +1,8 @@
 #!/bin/bash
 # Reproduces the validation results quoted in README.md.
-# usage: cd validation && ./run_validation.sh [path/to/qsrz]   (needs python3 + numpy + scipy)
+# usage: cd validation && ./run_validation.sh [path/to/quarz]   (needs python3 + numpy + scipy)
 set -e
-QS=${1:-../build/qsrz}
+QS=${1:-../build/quarz}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 
 echo "== 1. linear wake vs Green's function (n_b = 0.001) =="
@@ -25,7 +25,7 @@ echo "== 3. betatron oscillation in an ion channel =="
 $QS betatron.in > /dev/null
 python3 -c "
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_beamlog
+from quarz_read import read_beamlog
 import numpy as np
 b=read_beamlog('out_betatron/beams.txt')['witness']; t=b['t']; rr=b['r_rms']; w=1/np.sqrt(2*1000)
 print('max |r_rms - r0 |cos(w_b t)|| / r0 = %.2e' % (abs(rr-rr[0]*abs(np.cos(w*t))).max()/rr[0]))"
@@ -34,7 +34,7 @@ echo "== 4. witness energy gain in a rigid-driver blowout =="
 $QS gain.in > /dev/null
 python3 -c "
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_beamlog
+from quarz_read import read_beamlog
 import numpy as np
 b=read_beamlog('out_gain/beams.txt')['witness']
 print('d<gamma>/dt = %.4f   (-Ez at xi=7 from the blowout run: 0.4471)' % np.polyfit(b['t'],b['gamma_mean'],1)[0])"
@@ -63,7 +63,7 @@ echo "== 7. azimuthal mode 1: centroid betatron oscillation of an offset beam ==
 $QS betatron.in modes=1 witness.x0=0.05 witness.nsym=4 output.every=0 output.dir=out_m1_cbt > /dev/null
 python3 -c "
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_beamlog
+from quarz_read import read_beamlog
 import numpy as np
 b=read_beamlog('out_m1_cbt/beams.txt')['witness']; t=b['t']; w=1/np.sqrt(2*1000); xc=b['x_mean']
 print('max |x_c - x0 cos(w_b t)|/x0 = %.2e,  max |y_c|/x0 = %.1e' % (abs(xc-xc[0]*np.cos(w*t)).max()/xc[0], abs(b['y_mean']).max()/xc[0]))"

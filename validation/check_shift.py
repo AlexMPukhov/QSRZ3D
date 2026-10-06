@@ -9,7 +9,7 @@ usage: python check_shift.py ref_dir(m=0, centred) shift_dir(m=1, x0 = d) d [sym
 import sys
 import numpy as np
 sys.path.insert(0, "../tools")
-from qsrz_read import read_fields
+from quarz_read import read_fields
 
 ref = read_fields(sys.argv[1] + "/fields_000000.bin")
 sh = read_fields(sys.argv[2] + "/fields_000000.bin")

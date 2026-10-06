@@ -1,5 +1,5 @@
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_fields
+from quarz_read import read_fields
 import numpy as np
 ref = read_fields('out_im_u0001/fields_000000.bin')
 xi = ref['xi']; ks = np.where((xi>6.4)&(xi<7.2))[0]

@@ -1,6 +1,6 @@
 #include "Tridiag.hpp"
 
-namespace qsrz {
+namespace quarz {
 
 TridiagSolver::TridiagSolver(int M, TridiagMethod method) : M_(M) {
     if (method == TridiagMethod::Auto) method = exec_is_host() ? TridiagMethod::Thomas : TridiagMethod::PCR;
@@ -72,4 +72,4 @@ void TridiagSolver::solve(const View1D& a, const View1D& b, const View1D& c, con
     });
 }
 
-} // namespace qsrz
+} // namespace quarz

@@ -1,5 +1,5 @@
 // openPMD output (https://github.com/openPMD/openPMD-standard, version 1.1.0) through
-// openPMD-api.  Optional: compiled in when CMake finds openPMD-api (QSRZ_USE_OPENPMD);
+// openPMD-api.  Optional: compiled in when CMake finds openPMD-api (QUARZ_USE_OPENPMD);
 // otherwise requesting it in the input file is an error.
 //
 // Fields: geometry "thetaMode", axes (r, z), data order C, shape [modes][r][z] with
@@ -10,7 +10,7 @@
 //   interpolated (piecewise linear, as the hat functions of the code) onto a uniform radial
 //   grid  r = 0, dr, 2dr, ... <= output.openpmd_rmax.  With output.openpmd_grid = native they
 //   are written on the native non-uniform nodes, with geometry "other" and the node
-//   positions in the mesh attribute "qsrz_r_nodes".
+//   positions in the mesh attribute "quarz_r_nodes".
 // Particles: every beam is a species with position (x, y, z = t - xi), positionOffset (0),
 //   momentum, weighting, charge and mass.
 // Units: SI (unitSI attributes) when the plasma density is given (units.n0_cm3); without it
@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Beam;
 class Config;
@@ -52,4 +52,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-} // namespace qsrz
+} // namespace quarz

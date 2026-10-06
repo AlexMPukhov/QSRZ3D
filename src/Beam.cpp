@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, const BeamGrid& bg, bool mode1)
     : name_(name), grid_(grid), bg_(bg), m1_(mode1) {
@@ -835,4 +835,4 @@ void Beam::append(const double* p, size_t n) {
     set_particles(all);
 }
 
-} // namespace qsrz
+} // namespace quarz

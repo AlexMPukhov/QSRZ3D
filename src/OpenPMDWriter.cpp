@@ -10,20 +10,20 @@
 #include <filesystem>
 #include <stdexcept>
 
-#ifdef QSRZ_USE_OPENPMD
+#ifdef QUARZ_USE_OPENPMD
 #include <openPMD/openPMD.hpp>
-#ifdef QSRZ_USE_MPI
+#ifdef QUARZ_USE_MPI
 #include <mpi.h>
 #endif
 #endif
 
-namespace qsrz {
+namespace quarz {
 
-#ifndef QSRZ_USE_OPENPMD
+#ifndef QUARZ_USE_OPENPMD
 
 struct OpenPMDWriter::Impl {};
 OpenPMDWriter::OpenPMDWriter(const Config&, const std::string&, const RadialGrid&, const BeamGrid&, bool, double) {
-    throw std::runtime_error("output.format = openpmd: this QSRZ build has no openPMD support "
+    throw std::runtime_error("output.format = openpmd: this QUARZ build has no openPMD support "
                              "(install openPMD-api and reconfigure with -DopenPMD_ROOT=...)");
 }
 OpenPMDWriter::~OpenPMDWriter() = default;
@@ -40,7 +40,7 @@ constexpr double c_SI = 299792458.0, e_SI = 1.602176634e-19, me_SI = 9.109383701
 
 using UD = std::map<openPMD::UnitDimension, double>;
 
-#if defined(QSRZ_USE_MPI) && openPMD_HAVE_MPI
+#if defined(QUARZ_USE_MPI) && openPMD_HAVE_MPI
 long long allreduce_sum(long long v) {
     long long s = 0;
     MPI_Allreduce(&v, &s, 1, MPI_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -157,7 +157,7 @@ void OpenPMDWriter::Impl::open() {
     Comm& comm = Comm::world();
     Impl& I = *this;
     const std::string& options = I.options;
-#if defined(QSRZ_USE_MPI) && openPMD_HAVE_MPI
+#if defined(QUARZ_USE_MPI) && openPMD_HAVE_MPI
     if (comm.size() > 1)
         I.series = std::make_unique<openPMD::Series>(I.filename, openPMD::Access::CREATE, MPI_COMM_WORLD, options);
     else   // one rank: serial files (e.g. a plain .json instead of the per-rank .json.parallel layout)
@@ -168,12 +168,12 @@ void OpenPMDWriter::Impl::open() {
     I.series = std::make_unique<openPMD::Series>(I.filename, openPMD::Access::CREATE, options);
 #endif
     openPMD::Series& S = *I.series;
-    S.setSoftware("QSRZ", "1.0");
+    S.setSoftware("QUARZ", "1.0");
     S.setMeshesPath("fields/");
     S.setParticlesPath("particles/");
-    S.setAttribute("qsrz_units", I.si ? std::string("SI") : std::string("normalised: c/omega_p, 1/omega_p, n0, m_e c omega_p/e"));
-    if (I.si) S.setAttribute("qsrz_n0_SI", I.n0);
-    S.setAttribute("qsrz_coordinates", std::string("z = t - xi (lab frame); xi = t - z is the code's co-moving coordinate"));
+    S.setAttribute("quarz_units", I.si ? std::string("SI") : std::string("normalised: c/omega_p, 1/omega_p, n0, m_e c omega_p/e"));
+    if (I.si) S.setAttribute("quarz_n0_SI", I.n0);
+    S.setAttribute("quarz_coordinates", std::string("z = t - xi (lab frame); xi = t - z is the code's co-moving coordinate"));
 }
 
 OpenPMDWriter::~OpenPMDWriter() {
@@ -230,8 +230,8 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
             if (I.native) {
                 m.setGeometry("other");
                 m.setGeometryParameters(std::string("thetaMode;m=") + (I.m1 ? "2" : "1") +
-                                        ";imag=+;radial nodes non-uniform, see qsrz_r_nodes");
-                m.setAttribute("qsrz_r_nodes", I.rout);
+                                        ";imag=+;radial nodes non-uniform, see quarz_r_nodes");
+                m.setAttribute("quarz_r_nodes", I.rout);
             } else {
                 m.setGeometry(Mesh::Geometry::thetaMode);
                 m.setGeometryParameters(std::string("m=") + (I.m1 ? "2" : "1") + ";imag=+");
@@ -305,7 +305,7 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
         if (T->find("a_re")) {   // laser envelope a^ (normalised vector potential, dimensionless)
             Mesh L = it.meshes["laserEnvelope"];
             setup_mesh(L, UD{});
-            L.setAttribute("qsrz_convention", std::string("a = Re[(re + i im) exp(-i k0 xi)], xi = t - z"));
+            L.setAttribute("quarz_convention", std::string("a = Re[(re + i im) exp(-i k0 xi)], xi = t - z"));
             store(L["re"], "a_re", 1.0);
             store(L["im"], "a_im", 1.0);
         }
@@ -398,4 +398,4 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
 
 #endif
 
-} // namespace qsrz
+} // namespace quarz

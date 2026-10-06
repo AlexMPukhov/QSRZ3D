@@ -27,8 +27,8 @@ static int visible_devices() {
 
 int main(int argc, char* argv[]) {
     // MPI first (Kokkos must be initialised after MPI and finalised before it)
-    qsrz::Comm::init(&argc, &argv);
-    qsrz::Comm& comm = qsrz::Comm::world();
+    quarz::Comm::init(&argc, &argv);
+    quarz::Comm& comm = quarz::Comm::world();
     int rc = 0;
     {
         // one GPU per rank: device = (rank within the node) mod (#GPUs), unless the user
@@ -49,11 +49,11 @@ int main(int argc, char* argv[]) {
         Kokkos::ScopeGuard kokkos(kargc, args.data());
 
         if (argc < 2) {
-            if (comm.root()) std::cerr << "usage: [mpirun -np P] qsrz <input file> [key=value ...] [--kokkos-... options]\n";
+            if (comm.root()) std::cerr << "usage: [mpirun -np P] quarz <input file> [key=value ...] [--kokkos-... options]\n";
             rc = 1;
         } else {
             try {
-                qsrz::Config cfg(argv[1]);
+                quarz::Config cfg(argv[1]);
                 // command line overrides:  key=value
                 for (int i = 2; i < argc; ++i) {
                     std::string a = argv[i];
@@ -65,7 +65,7 @@ int main(int argc, char* argv[]) {
                     std::cout << "MPI: " << comm.size() << " ranks (decomposition along xi)"
                               << (ndev > 0 ? ", " + std::to_string(ndev) + " GPU(s) per node" : std::string()) << "\n";
                 {
-                    qsrz::Simulation sim(cfg);
+                    quarz::Simulation sim(cfg);
                     sim.run();
                 }
                 if (comm.root())
@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
             }
         }
     }
-    if (rc == 2 && comm.size() > 1) qsrz::Comm::abort(2);   // other ranks may wait in a receive
-    qsrz::Comm::finalize();
+    if (rc == 2 && comm.size() > 1) quarz::Comm::abort(2);   // other ranks may wait in a receive
+    quarz::Comm::finalize();
     return rc;
 }

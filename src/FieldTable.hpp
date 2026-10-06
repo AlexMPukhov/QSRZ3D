@@ -15,7 +15,7 @@
 #include <utility>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 struct FieldTable {
     using HostView3D = Kokkos::View<Real***, Kokkos::LayoutRight, HostSpace>;
@@ -31,4 +31,4 @@ struct FieldTable {
     }
 };
 
-} // namespace qsrz
+} // namespace quarz

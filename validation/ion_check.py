@@ -20,7 +20,7 @@ import numpy as np
 from math import gamma as Gamma
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
-from qsrz_read import read_fields  # noqa: E402
+from quarz_read import read_fields  # noqa: E402
 
 IP = {"H": [13.59844], "He": [24.58739, 54.41776], "Li": [5.39172, 75.6402, 122.4543],
       "N": [14.5341, 29.6013, 47.44924, 77.4735, 97.8902, 552.0718, 667.046],

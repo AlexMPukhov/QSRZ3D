@@ -7,7 +7,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace qsrz {
+namespace quarz {
 
 namespace {
 struct Element {
@@ -146,4 +146,4 @@ std::string IonSpeciesInfo::description() const {
     return o.str();
 }
 
-} // namespace qsrz
+} // namespace quarz

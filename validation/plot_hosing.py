@@ -2,7 +2,7 @@ import sys; sys.path.insert(0, '../tools')
 import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from qsrz_read import read_slices, read_fields, xz_plane
+from quarz_read import read_slices, read_fields, xz_plane
 run = sys.argv[1] if len(sys.argv) > 1 else '/tmp/claude-0/hosing'
 fig, ax = plt.subplots(1, 3, figsize=(15, 4.2), constrained_layout=True)
 for n, c in [(0, '#888888'), (40, '#4C78A8'), (80, '#F58518'), (120, '#E45756')]:
@@ -25,5 +25,5 @@ m = a.pcolormesh(d['xi'], x, rbs.T, shading='auto', cmap='magma', vmin=0, vmax=6
 a.set_ylim(-0.8, 0.8); a.set_xlabel(r'$\xi$'); a.set_ylabel(r'$x$')
 a.set_title(f'driver density (m=0 + m=1, 0.25-averaged in $\\xi$), t = {d["t"]:g}')
 fig.colorbar(m, ax=a, label=r'$n_b/n_0$')
-fig.savefig('qsrz_hosing.png', dpi=130)
+fig.savefig('quarz_hosing.png', dpi=130)
 print('ok')

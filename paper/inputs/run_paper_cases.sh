@@ -1,11 +1,11 @@
 #!/bin/bash
 # Run the paper cases and print the time per sweep (one time step through the box).
-#   QSRZ=/path/to/qsrz  LAUNCH="mpirun -np 4"  bash run_paper_cases.sh [group ...]
+#   QUARZ=/path/to/quarz  LAUNCH="mpirun -np 4"  bash run_paper_cases.sh [group ...]
 # groups: conv  ref  maps  evo  bench  mpi     (default: conv maps evo bench)
 # Each run writes out_<case>/ and log_<case>.txt in the current directory.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
-QSRZ=${QSRZ:-$HERE/../../build/qsrz}
+QUARZ=${QUARZ:-$HERE/../../build/quarz}
 LAUNCH=${LAUNCH:-}
 GROUPS_=${*:-conv maps evo bench}
 
@@ -13,7 +13,7 @@ run() {   # name, deck, extra overrides...
     local name=$1 deck=$2; shift 2
     rm -rf "out_$name"
     local t0=$(date +%s.%N)
-    $LAUNCH "$QSRZ" "$deck" output.dir="out_$name" "$@" > "log_$name.txt" 2>&1
+    $LAUNCH "$QUARZ" "$deck" output.dir="out_$name" "$@" > "log_$name.txt" 2>&1
     local rc=$? t1=$(date +%s.%N)
     local sw=$(grep -o 'sweep *[0-9.]* s' "log_$name.txt" | awk '{s+=$2; n++} END {if (n) printf "%.3f", s/n; else print "-"}')
     printf "%-22s rc=%d  wall %8.1f s   mean sweep %s s\n" "$name" $rc "$(echo "$t1 - $t0" | bc)" "$sw"

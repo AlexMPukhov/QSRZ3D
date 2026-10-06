@@ -3,7 +3,7 @@
 #include <cmath>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 namespace {
 View1D to_device(const char* name, const std::vector<Real>& v) {
@@ -148,4 +148,4 @@ void FieldSolver::over_r(const View1D& f, const View1D& out) const {
     });
 }
 
-} // namespace qsrz
+} // namespace quarz

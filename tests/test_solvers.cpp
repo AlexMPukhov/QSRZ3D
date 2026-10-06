@@ -11,7 +11,7 @@
 #include <random>
 #include <vector>
 
-using namespace qsrz;
+using namespace quarz;
 
 static int failures = 0;
 static void check(bool ok, const char* what) {

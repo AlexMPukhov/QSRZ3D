@@ -6,7 +6,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools"))
-from qsrz_read import read_fields  # noqa: E402
+from quarz_read import read_fields  # noqa: E402
 
 
 def ctrap(y, x):

@@ -1,5 +1,5 @@
 import sys; sys.path.insert(0,'../tools')
-from qsrz_read import read_fields
+from quarz_read import read_fields
 import numpy as np
 d=read_fields(sys.argv[1]+'/fields_000000.bin'); r=d['r']; xi=d['xi']; ez=d['ez'][:,0]
 m=(xi>6)&(xi<9.5); k=np.argmin(np.where(m,ez,1e9))

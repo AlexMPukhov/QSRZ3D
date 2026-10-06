@@ -14,7 +14,7 @@
 #include "Types.hpp"
 #include <string>
 
-namespace qsrz {
+namespace quarz {
 
 struct MScalar {
     View1D a0, ar, ai;   // mode 0 ; mode 1 real/imag parts of f1
@@ -82,4 +82,4 @@ KOKKOS_INLINE_FUNCTION void eval_vector(Real r0, Real i0, Real r1, Real i1, Real
     }
 }
 
-} // namespace qsrz
+} // namespace quarz

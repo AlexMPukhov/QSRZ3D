@@ -15,7 +15,7 @@
 #include "RadialGrid.hpp"
 #include "Tridiag.hpp"
 
-namespace qsrz {
+namespace quarz {
 
 enum class OpKind { L0, L1D, L1F, L2D };
 
@@ -52,4 +52,4 @@ private:
     View1D inv_r_;                // 1/r_j (axis: 1/r_1)
 };
 
-} // namespace qsrz
+} // namespace quarz

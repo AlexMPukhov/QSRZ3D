@@ -2,7 +2,7 @@
 import sys
 import numpy as np
 sys.path.insert(0, "../tools")
-from qsrz_read import read_fields
+from quarz_read import read_fields
 a = read_fields(sys.argv[1] + "/fields_000000.bin"); b = read_fields(sys.argv[2] + "/fields_000000.bin")
 label = sys.argv[3] if len(sys.argv) > 3 else ""
 xmax = float(sys.argv[4]) if len(sys.argv) > 4 else 1e9

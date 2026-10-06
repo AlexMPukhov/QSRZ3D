@@ -47,7 +47,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -188,4 +188,4 @@ bool is_ionizable(const Config& cfg, const std::string& name);
 // impact cross-section (cm^2) of a beam particle with charge z, Lorentz factor gamma (for the log)
 double impact_sigma_cm2(const IonSpeciesInfo& I, double z, double gamma);
 
-} // namespace qsrz
+} // namespace quarz

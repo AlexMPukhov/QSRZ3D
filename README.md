@@ -1,6 +1,9 @@
-# QSRZ — quasi-static PIC code in (r, θ, ξ) with azimuthal modes m = 0, 1 and a flexible non-uniform radial grid
+# QUARZ — Quasistatic Arbitrary-resolution RZ code
 
-QSRZ is a quasi-static particle-in-cell code for plasma wakefield
+*Quasi-static PIC code in (r, θ, ξ) with azimuthal modes m = 0, 1 and a flexible non-uniform radial grid.*
+(Formerly QSRZ; renamed in October 2026. Input files and output formats are unchanged.)
+
+QUARZ is a quasi-static particle-in-cell code for plasma wakefield
 acceleration in the spirit of LCODE-2D, written in C++17 on top of
 [Kokkos](https://github.com/kokkos/kokkos). One source compiles for CPUs
 (OpenMP or Serial) and for GPUs (CUDA, HIP, SYCL). With MPI, the ξ box is
@@ -351,10 +354,10 @@ compared with the sweep work (one plasma slice, ~10⁴ particles).
 **Running.**
 
 ```bash
-mpirun -np 4 ./qsrz run.in                       # 4 CPU ranks (set OMP_NUM_THREADS per rank)
-mpirun -np 4 -x OMP_NUM_THREADS=8 ./qsrz run.in  # hybrid MPI + OpenMP
-mpirun -np 8 ./qsrz run.in                       # 2 nodes x 4 GPUs (CUDA build)
-srun -n 8 --gpus-per-task=1 ./qsrz run.in        # SLURM: each rank sees one GPU
+mpirun -np 4 ./quarz run.in                       # 4 CPU ranks (set OMP_NUM_THREADS per rank)
+mpirun -np 4 -x OMP_NUM_THREADS=8 ./quarz run.in  # hybrid MPI + OpenMP
+mpirun -np 8 ./quarz run.in                       # 2 nodes x 4 GPUs (CUDA build)
+srun -n 8 --gpus-per-task=1 ./quarz run.in        # SLURM: each rank sees one GPU
 ```
 
 Each rank needs at least 2 slices; in practice use blocks of ≥ 50 slices, so
@@ -374,16 +377,16 @@ not found, CMake downloads Kokkos 4.4.01 and builds it with the options you
 pass.
 
 MPI is optional: if CMake finds an MPI library, the MPI version is built
-(`-- QSRZ: MPI enabled` in the CMake output); otherwise a serial version is
-built with a warning. `-DQSRZ_ENABLE_MPI=OFF` switches MPI off. Any MPI-3
+(`-- QUARZ: MPI enabled` in the CMake output); otherwise a serial version is
+built with a warning. `-DQUARZ_ENABLE_MPI=OFF` switches MPI off. Any MPI-3
 library works (OpenMPI, MPICH, Intel MPI, Cray MPICH). The MPI executable also
 runs without `mpirun` as a single rank.
 
 openPMD output is optional too: if CMake finds
 [openPMD-api](https://github.com/openPMD/openPMD-api) ≥ 0.15
 (`-DopenPMD_ROOT=/path/to/install`), the openPMD writer is built
-(`-- QSRZ: openPMD output enabled`). For MPI runs openPMD-api must be built with
-MPI (and with parallel HDF5 or ADIOS2). `-DQSRZ_ENABLE_OPENPMD=OFF` switches it off.
+(`-- QUARZ: openPMD output enabled`). For MPI runs openPMD-api must be built with
+MPI (and with parallel HDF5 or ADIOS2). `-DQUARZ_ENABLE_OPENPMD=OFF` switches it off.
 
 ```bash
 # CPU (OpenMP)
@@ -416,18 +419,18 @@ you need is a CUDA compiler. The script handles that:
    driver ≥ 580; for older drivers the script prints how to get a CUDA 12
    toolkit (module, conda, or NVIDIA runfile with `--toolkitpath`).
 3. **Architecture.** It detects the GPU architecture with `nvidia-smi`
-   (override with `QSRZ_ARCH=HOPPER90`, etc.).
+   (override with `QUARZ_ARCH=HOPPER90`, etc.).
 4. **Building.** It builds Kokkos (5.2.2 for CUDA 13, 4.4.01 for CUDA 12)
-   and QSRZ into `build-gpu/`.
+   and QUARZ into `build-gpu/`.
 5. **Checking.** It runs `ctest` and a short blowout run on the GPU.
 
 Tested here from a clean copy in compile-only mode
-(`QSRZ_COMPILE_ONLY=1 QSRZ_ARCH=AMPERE80`, no GPU in the test machine):
-pip toolkit → Kokkos 5.2.2 → QSRZ with sm_80 device code, about 12 minutes on
+(`QUARZ_COMPILE_ONLY=1 QUARZ_ARCH=AMPERE80`, no GPU in the test machine):
+pip toolkit → Kokkos 5.2.2 → QUARZ with sm_80 device code, about 12 minutes on
 2 cores. Running on an actual GPU has not been tested.
 
-Run with `./qsrz input.in [key=value ...]`. Any input key can be overridden
-on the command line, for example `./qsrz run.in grid.dr=0.005 time.steps=10`.
+Run with `./quarz input.in [key=value ...]`. Any input key can be overridden
+on the command line, for example `./quarz run.in grid.dr=0.005 time.steps=10`.
 Threads are set with `OMP_NUM_THREADS`, and Kokkos options (e.g.
 `--kokkos-device-id=1`) are passed through.
 
@@ -436,14 +439,14 @@ Threads are set with `OMP_NUM_THREADS`, and Kokkos options (e.g.
 - *Segmentation fault right after the start-up summary* (after the `Beam ...` lines), with a
   backtrace in `std::filesystem::path::~path` and headers from `/usr/include/c++/8`: the code
   was compiled by an old system GCC 8 but runs with the `libstdc++` of a newer GCC (e.g. from a
-  loaded module, visible with `ldd qsrz | grep stdc++`). GCC 8's `std::filesystem` is not
+  loaded module, visible with `ldd quarz | grep stdc++`). GCC 8's `std::filesystem` is not
   binary compatible with GCC >= 9. CMake now refuses GCC < 9; build in a fresh directory with
   `CXX=$(which g++) CC=$(which gcc) cmake -B build ...` and check that CMake reports the
   intended compiler (`The CXX compiler identification is GNU 15...`).
 - CMake caches the compiler of a build directory: after loading a different compiler module,
   always configure a new directory instead of re-running CMake in the old one.
 - The MPI version is built whenever CMake finds MPI, also when you run without `mpirun`; use
-  `-DQSRZ_ENABLE_MPI=OFF` for a purely serial (OpenMP-only) build.
+  `-DQUARZ_ENABLE_MPI=OFF` for a purely serial (OpenMP-only) build.
 
 ## 5. Input reference
 
@@ -627,7 +630,7 @@ density are skipped.
 | `output.beam_every` | 0 | write beam particles every n steps |
 | `output.beam_slices` | 0 | number of ξ-bins for per-slice beam diagnostics (centroid, size, γ, ε) written at field outputs |
 | `output.beam_slices_range` | box | `lo hi`: ξ-range of these bins (default: the whole box); the bins are fixed, so files at different steps line up |
-| `output.format` | `native` | `native` (QSRZ binary/text files), `openpmd`, or `both`. With `openpmd`, the native field files and particle dumps are not written; `axis_*`, `beams.txt` and `slices_*` always are. |
+| `output.format` | `native` | `native` (QUARZ binary/text files), `openpmd`, or `both`. With `openpmd`, the native field files and particle dumps are not written; `axis_*`, `beams.txt` and `slices_*` always are. |
 | `output.openpmd_backend` | `h5` | `h5` (HDF5), `bp` (ADIOS2) or `json` |
 | `output.openpmd_file` | `openpmd/data_%06T` | file name pattern inside `output.dir` (`%T` = step: one file per output) |
 | `output.openpmd_grid` | `uniform` | `uniform`: fields interpolated onto a uniform radial grid (openPMD requires uniform spacing; readable by openPMD-viewer, yt, …); `native`: the code's non-uniform nodes, exact, geometry `other` |
@@ -690,13 +693,13 @@ density are skipped.
     uniform radial grid. The default spacing is h_min, which can make the files much
     larger than the native ones; the code prints the size per output and a hint.
     `output.openpmd_grid = native` writes the exact data on the non-uniform nodes
-    instead (geometry `other`, node positions in the mesh attribute `qsrz_r_nodes`);
+    instead (geometry `other`, node positions in the mesh attribute `quarz_r_nodes`);
     standard readers then do not know the radial positions.
   - **Particles:** every beam is a species with `position` (x, y, z = t − ξ),
     `positionOffset` (0), `momentum` (per physical particle), `weighting`
     (physical particles per macro-particle), `charge` and `mass`.
   - **Units:** SI when `units.n0_cm3` is given, otherwise normalised units with
-    `unitSI` = 1 (the series attribute `qsrz_units` says which).
+    `unitSI` = 1 (the series attribute `quarz_units` says which).
   - **MPI:** openPMD writes are collective. In the ξ pipeline the ranks reach a
     step at different times, so each openPMD output step drains the pipeline
     (about P − 1 block sweeps). Example, 2 ranks, output every 2nd of 10 steps:
@@ -704,7 +707,7 @@ density are skipped.
     native format, which needs no synchronisation, is cheaper.
   - Reading: `openpmd_viewer.OpenPMDTimeSeries('out/openpmd/')`, e.g.
     `ts.get_field('E', 'z', iteration=n, m='all', theta=0)`.
-- **Python helpers.** `tools/qsrz_read.py` reads all of these;
+- **Python helpers.** `tools/quarz_read.py` reads all of these;
   `xz_plane()` builds the field in the (ξ, x) plane from the modes.
   `tools/plot_fields.py` makes a quick-look PNG.
 
@@ -756,7 +759,7 @@ written together with the native files (`output.format = both`) and compared wit
 | Relativistic self-focusing of a long pulse, w0 = 20, over one Z_R | vacuum 1 → 0.707 (exact); P/P_c = 0.5: diffraction compensated (1.00); P/P_c = 2: focusing, a → 1.58 a0 |
 | Ponderomotive kick on a γ = 5 beam inside an a0 = 1 pulse | dp_x/dt and dp_z/dt vs −∇⟨a²⟩/(2γ̄): 4·10⁻⁴, 1.2·10⁻³ |
 | MPI 2, 3 ranks vs serial (LWFA example, laser + witness) | bit-identical, incl. `laser.txt` |
-| Single solve vs Wake-T 0.9.1 (`validation/laser_vs_waket.py`; same laser, plasma, resolution) | a0 = 0.3, 1: E_z on axis agrees to 10⁻³ and 3·10⁻⁴. a0 = 2: up to 11 % near the bubble closure. a0 = 4: up to 27 % from the laser peak on (both codes converged in Δξ, Δr and ppc). QSRZ's fields satisfy Gauss's law in the laser region to the accuracy of the finite-difference check (e.g. div E = 0.371 vs ρ = 0.369 at the peak, r = 0.5). Wake-T's do not there (−0.014 vs 0.128), which points to the Wake-T side but has not been settled; a full PIC comparison is needed for a0 ≳ 2. |
+| Single solve vs Wake-T 0.9.1 (`validation/laser_vs_waket.py`; same laser, plasma, resolution) | a0 = 0.3, 1: E_z on axis agrees to 10⁻³ and 3·10⁻⁴. a0 = 2: up to 11 % near the bubble closure. a0 = 4: up to 27 % from the laser peak on (both codes converged in Δξ, Δr and ppc). QUARZ's fields satisfy Gauss's law in the laser region to the accuracy of the finite-difference check (e.g. div E = 0.371 vs ρ = 0.369 at the peak, r = 0.5). Wake-T's do not there (−0.014 vs 0.128), which points to the Wake-T side but has not been settled; a full PIC comparison is needed for a0 ≳ 2. |
 
 **LWFA example** (`examples/lwfa_laser.in`, a0 = 4, 100 steps = 10.6 mm, 77 s on 2 cores):
 - **laser:** self-guided, with the peak amplitude between 3 and 6.5;
@@ -825,7 +828,7 @@ focusing gradient at r = 0.01 is 0.88 instead of 0.5.
   (`slices_driver_*.txt`). In the test run (120 steps, ~8 min on 2 cores)
   the tail centroid grows from 0.006 to 0.12 c/ω_p in about three betatron
   periods, while ⟨y⟩ stays at 10⁻¹⁴ thanks to `mirror_y`. See
-  `validation/qsrz_hosing.png`. It is a qualitative demonstration and has not
+  `validation/quarz_hosing.png`. It is a qualitative demonstration and has not
   been compared quantitatively with hosing theory.
 - **Cost of m = 1:** about 10× an axisymmetric run: 8 particles per ring,
   plus the extra field solves and Picard iterations (blowout test: 11 s vs
@@ -863,7 +866,7 @@ focusing gradient at r = 0.01 is 0.88 instead of 0.5.
   - It takes 3.4 s per step on 2 cores. The plasma particle count is about three times
     that of the pre-ionized run.
 
-`validation/qsrz_validation_summary.png` shows the pinched-witness grid
+`validation/quarz_validation_summary.png` shows the pinched-witness grid
 comparison, the blowout on the stretched grid, and the SMI run.
 
 ## 9. Relation to LCODE, limitations and road map

@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-namespace qsrz {
+namespace quarz {
 
 class Config;
 
@@ -108,4 +108,4 @@ private:
     IView1D lost_;
 };
 
-} // namespace qsrz
+} // namespace quarz

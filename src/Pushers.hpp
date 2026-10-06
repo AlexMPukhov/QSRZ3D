@@ -18,7 +18,7 @@
 
 #include "Types.hpp"
 
-namespace qsrz {
+namespace quarz {
 namespace push {
 
 struct V3 { Real x, y, z; };
@@ -109,4 +109,4 @@ KOKKOS_INLINE_FUNCTION Real rr_rate(V3 u, V3 E, V3 B, Real qm, Real rr) {
 }
 
 } // namespace push
-} // namespace qsrz
+} // namespace quarz
