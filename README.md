@@ -111,6 +111,27 @@ whose quasi-static weight γ/Δ = 1/(1 − v_z) exceeds `pusher.max_qsa_factor`
 treated quasi-statically and would make the density and currents singular at
 the closure of a strong bubble, so they are removed and counted.
 
+**Adaptive sub-slicing** (`pusher.max_cells_per_step`, off by default). On a grid with very
+small cells near the axis, electrons converging on the axis at the back of a bubble can
+cross many cells in one ξ step. Before each step the code finds the largest number of radial
+cells any plasma particle would cross (straight path, cell size at its closest approach to the
+axis). If it exceeds `max_cells_per_step`, the step is split into n sub-slices, each with a full
+deposit and field solve; only the regular slices are stored. In a sub-slice the beam sources
+are extrapolated from the slice with their ξ-derivative (the same one that enters E_z), and the
+laser ⟨a²⟩ and ionization are those of the slice. The plasma push uses Adams–Bashforth
+coefficients for non-uniform steps (Lagrange interpolation through the actual history points;
+the classical coefficients when the steps are equal). After sub-slices the step grows by at
+most a factor 2 per step, since multistep methods become unstable for larger jumps. Sub-slicing
+is deterministic, so MPI runs stay bit-identical to serial runs.
+
+What it does and does not do (section 13 of the validation): for the pinched-witness case
+on the grid with h₀ = 5·10⁻⁴, the wake behind the bubble at Δξ = 0.01 improves from 2 % to
+0.2 % (E_z) and 0.05 % (ψ), like Δξ = 0.00125 without sub-slicing at a third of the cost, with
+no change around the witness. The E_z spike at the bubble closure itself is a near-singular
+caustic (Lotov 2003): its height and fine structure depend on Δξ and on the cells at any step
+size, and sub-slicing does not make them converge. At the default Δξ = 0.005 the wake
+behind the bubble is already accurate to about 0.3 % in this case.
+
 **Species.** Any number of species can be defined (electrons, mobile ions of
 any charge and mass). Immobile species are added as a static background. If
 no positive species is defined, a neutralising immobile background is built
@@ -479,6 +500,8 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `pusher.ab_order` | 3 | Adams–Bashforth order 1–5 for plasma rings. 2–3 is most robust at bubble closure; 5 can blow up there. |
 | `pusher.delta_min` | 10⁻³ | rings with γ − p_z below this are removed (trapped) |
 | `pusher.max_qsa_factor` | 35 | rings with γ/(γ − p_z) above this are removed (trapped; the quasi-static weight diverges) |
+| `pusher.max_cells_per_step` | 0 | adaptive sub-slicing: split a ξ step into sub-slices if a plasma particle would cross more radial cells than this (0 = off; 1 is a good value). The step line of the log reports the extra sub-slices (rank 0). |
+| `pusher.substep_max` | 64 | largest number of sub-slices per step |
 | `solver.tridiag` | `auto` | `auto` (Thomas on host, PCR on device) \| `thomas` \| `pcr` |
 | `beams.xi_shape` | `linear` (1 rank), `ngp` (MPI) | longitudinal shape of beam particles for deposit and field gather: `linear` (between two slices) or `ngp` (nearest slice). MPI runs need `ngp`; a serial run with `ngp` gives the same results as an MPI run. |
 | `pusher.beam` | `vay` | beam momentum pusher: `vay` \| `hc` \| `imp` \| `imp_rr` \| `boris`. Can be overridden per beam with `<beam>.pusher`. |
@@ -629,6 +652,7 @@ density are skipped.
 |---|---|---|
 | `output.dir` | `out` | output directory |
 | `output.every` | 1 | write fields every n steps (0 = never) |
+| `output.field_files` | 1 | 0: do not write the 2D field files `fields_*.bin` at these steps, only the on-axis data `axis_*.txt` (long runs, fine Δξ) |
 | `output.beam_every` | 0 | write beam particles every n steps |
 | `output.beam_slices` | 0 | number of ξ-bins for per-slice beam diagnostics (centroid, size, γ, ε) written at field outputs |
 | `output.beam_slices_range` | box | `lo hi`: ξ-range of these bins (default: the whole box); the bins are fixed, so files at different steps line up |
@@ -803,6 +827,16 @@ and analytic beam densities.
 | MPI 2, 3 ranks vs serial, with laser ionization of N (LWFA example + 1 % N, `nsplit = 4`) and with impact ionization (proton bunch in Ar) | all outputs incl. `ionization.txt` bit-identical |
 | MPI 2, 3 ranks vs serial, `modes = 1`, field ionization of H/He (8 particles per ring) by an offset driver | bit-identical |
 | All earlier validation sections | unchanged |
+
+**Adaptive sub-slicing** (section 13; `test_ab`):
+
+| test | result |
+|---|---|
+| Unit: variable-step Adams–Bashforth coefficients, orders 1–5 | polynomials of degree order − 1 integrated exactly (10⁻¹⁴) on non-uniform points; uniform points reproduce the classical coefficients (2·10⁻¹³); coefficients sum to 1 |
+| Pinched witness + ion motion, h₀ = 5·10⁻⁴, box to ξ = 12, Δξ = 0.01, `max_cells_per_step = 1` (1642 extra sub-slices), vs Δξ = 6.25·10⁻⁴ | behind the bubble: E_z 2.3 % → 0.17 %, ψ 2.0 % → 0.05 % (r.m.s.); witness region unchanged (4·10⁻⁵); closure spike not converged at any Δξ (see §1) |
+| Off (default) | results bit-identical to the code without sub-slicing |
+| 2, 3 MPI ranks vs serial with sub-slicing (`beams.xi_shape = ngp`) | bit-identical |
+| Hosing (`modes = 1`), LWFA with laser | run; LWFA: ψ on the axis vs Δξ/4 0.23 % → 0.19 % |
 
 **MPI vs serial** (`validation/cmp_runs.py` compares every output file; serial runs with
 `beams.xi_shape = ngp`, one OpenMP thread per rank, 2 cores; P = 3, 4 oversubscribed):
