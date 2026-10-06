@@ -299,9 +299,11 @@ an initially empty species). Three channels:
   latency-bound. The big gains come from the beams (10⁶–10⁷ particles) and
   from many radial cells.
 
-**GPU status:** the code (including the m = 1 and the MPI versions) has been **compiled and linked for CUDA 13.4 /
-sm_80 (A100) with Kokkos 5.2.2** (MPI: OpenMPI 4), but it has **not yet been run on a GPU**
-(there was none available). All physics tests were run on the OpenMP
+**GPU status:** the code (including the m = 1 and the MPI versions) compiles and links for CUDA 13.4 /
+sm_80 (A100) with Kokkos 5.2.2 (MPI: OpenMPI 4). It **runs on an NVIDIA Blackwell GPU (GB202)**
+(T. C. Wilson, October 2026): about 50 times faster than one thread of an Intel Xeon E5620.
+A systematic GPU benchmark (all cores of a current CPU as the reference) and a file-by-file
+comparison of GPU and CPU results are still to be done. All physics tests were run on the OpenMP
 backend. The PCR solver (the GPU default) was tested on CPU and agrees with
 Thomas to round-off. The first thing to do on a GPU machine is to run
 `ctest` and `validation/run_validation.sh`.

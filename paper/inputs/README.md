@@ -35,8 +35,8 @@ driver keys (`emit_n`, `espread`, `nparticles`) in these runs are expected.
   work to fill a GPU; the large-N convergence decks (N = 3700…32000) and `bench_particles_s1`
   (beam push of 6e5 particles every step) are the more telling GPU cases. The plasma has
   4 macro-particles per cell, so the particle count per slice scales with N.
-- The tridiagonal solves use parallel cyclic reduction on GPUs (`solver.tridiag = auto`, can be forced to `thomas` or `pcr` for comparison); this has been compiled
-  for CUDA but has never run on a GPU, so please compare the first results with a CPU run
+- The tridiagonal solves use parallel cyclic reduction on GPUs (`solver.tridiag = auto`, can be forced to `thomas` or `pcr` for comparison); please compare GPU
+  results with a CPU run
   (`validation/cmp_runs.py cpu_dir gpu_dir 1e-8`, round-off differences are expected).
 - MPI with several GPUs: one rank per GPU is chosen automatically (`rank within the node mod
   #GPUs`). The pipeline needs at least a few times more sweeps than ranks to be efficient

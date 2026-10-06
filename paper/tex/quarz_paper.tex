@@ -14,7 +14,7 @@
 
 \begin{document}
 
-\title{Quasi-static particle-in-cell simulation of plasma wakefields\\ on non-uniform radial grids}
+\title{QUARZ: a quasi-static particle-in-cell code with non-uniform radial grids\\ for plasma wakefields}
 
 \author{Alexander Pukhov}
 \author{Thomas C. Wilson}
@@ -233,7 +233,9 @@ With randomly sampled macro-particle beams ($4\times10^5$ driver and $2\times10^
 
 \subsection{Parallel runs}
 
-MPI runs were compared file by file with serial runs that use the same nearest-slice beam assignment. Runs without beam particles crossing rank boundaries are bit-identical (witness gain, ion motion, parsed profiles, analytic offset driver with $m=1$). When particles move between ranks, their order in memory changes and the results differ at round-off level: $10^{-10}$ in the fields for hosing ($m=1$, 12 steps) and $5\times10^{-8}$ for a $\gamma=5$ beam slipping through all ranks. On 2 CPU cores the speed-up is 1.77--1.83 for 13--25 sweeps, against 1.86--1.92 for an ideal pipeline. GPU performance has not yet been measured.
+MPI runs were compared file by file with serial runs that use the same nearest-slice beam assignment. Runs without beam particles crossing rank boundaries are bit-identical (witness gain, ion motion, parsed profiles, analytic offset driver with $m=1$). When particles move between ranks, their order in memory changes and the results differ at round-off level: $10^{-10}$ in the fields for hosing ($m=1$, 12 steps) and $5\times10^{-8}$ for a $\gamma=5$ beam slipping through all ranks. On 2 CPU cores the speed-up is 1.77--1.83 for 13--25 sweeps, against 1.86--1.92 for an ideal pipeline. On a GPU of the NVIDIA Blackwell generation (GB202), a run is about 50 times faster than on a single thread of an Intel Xeon E5620 CPU.
+% TODO (T.C.W.): name the test case (deck from paper/inputs), give the time per sweep on GPU and CPU,
+% and add a comparison with all cores of a current CPU node; state that the code runs in double precision.
 
 %---------------------------------------------------------------------------
 \section{Conclusions}

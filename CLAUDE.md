@@ -13,8 +13,8 @@ working state and the rules for developing.
   descriptive message and update "Status" / "Open issues" below in the same commit.
   Commit unfinished work too, as `WIP: ...`, before long runs or at the end of a turn.
 - Never report a feature as done without running the relevant validation section.
-- **Remote:** `origin` = https://github.com/AlexMPukhov/QSRZ3D (private; the repo name predates
-  the rename to QUARZ and may be renamed by Alexander on GitHub; GitHub redirects old URLs).
+- **Remote:** `origin` = https://github.com/AlexMPukhov/QUARZ (private; renamed from QSRZ3D on
+  2026-10-06, GitHub redirects the old URL).
   Push after every commit (`git push origin main`); a new session starts by cloning it into
   `/home/claude/quarz` (`git clone <url> quarz`). Commit email:
   alex.m.pukhov@gmail.com (GitHub account of Alexander).
@@ -68,7 +68,8 @@ Package for delivery (includes .git, so the history survives the container):
 ## Status (2026-10-05)
 Done and validated (README §7, `validation/validation_results.txt`):
 - core solver, non-uniform grid, m = 1 mode, mobile ions, parsed profiles, MPI, openPMD,
-  CUDA compiles (never run on a real GPU);
+  CUDA compiles and runs on a Blackwell GB202 GPU (Thomas, 2026-10-06: ~50x vs one thread of a
+  Xeon E5620; no systematic benchmark and no GPU-vs-CPU file comparison yet);
 - laser envelope solver (Crank–Nicolson in t, trapezoid in xi), ponderomotive force on
   plasma and beams; `pusher.max_qsa_factor` (gamma/Delta > 35 removed as trapped);
 - ionization: ADK by plasma/beam fields, period-averaged ADK by the laser (numerical
@@ -93,7 +94,8 @@ Done and validated (README §7, `validation/validation_results.txt`):
 - Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
   no ionization energy loss.
 - No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
-- Never run on a GPU.
+- GPU: only Thomas' first speed number (~50x vs one old CPU thread). Needed for the paper: deck,
+  time per sweep GPU vs all cores of a current CPU, cmp_runs.py GPU vs CPU (TODO in the .tex).
 
 ## Next steps (proposed to Alexander)
 - Convert trapped plasma electrons into beam particles (charge w * dt per step) so that
