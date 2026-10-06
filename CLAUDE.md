@@ -13,7 +13,7 @@ working state and the rules for developing.
   descriptive message and update "Status" / "Open issues" below in the same commit.
   Commit unfinished work too, as `WIP: ...`, before long runs or at the end of a turn.
 - Never report a feature as done without running the relevant validation section.
-- **Remote:** `origin` = https://github.com/AlexMPukhov/QUARZ (private; renamed from QSRZ3D on
+- **Remote:** `origin` = https://github.com/AlexMPukhov/QUARZ (PUBLIC; renamed from QSRZ3D on
   2026-10-06, GitHub redirects the old URL).
   Push after every commit (`git push origin main`); a new session starts by cloning it into
   `/home/claude/quarz` (`git clone <url> quarz`). Commit email:
@@ -109,8 +109,8 @@ Done and validated (README §7, `validation/reference_full.txt`):
   time per sweep GPU vs all cores of a current CPU, cmp_runs.py GPU vs CPU (TODO in the .tex).
 
 - Paper: Alexander submits v1 to arXiv now (priority for the non-uniform radial grid); referee
-  round used for items 1-3 below. The manuscript cites https://github.com/AlexMPukhov/QUARZ,
-  which is still PRIVATE: it must be made public (or a public release created) before arXiv.
+  round used for items 1-3 below. The manuscript cites https://github.com/AlexMPukhov/QUARZ
+  (public). Everything pushed is visible to everyone: no unpublished results in the repo.
 
 ## Next steps (agreed 2026-10-06, before the revised manuscript)
 1. Cross-code benchmarks: beam-driven cases vs LCODE 2D and QPAD/HiPACE++; laser vs FBPIC.
