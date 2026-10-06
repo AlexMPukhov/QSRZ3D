@@ -44,7 +44,8 @@ cmake -B build -DKokkos_ENABLE_OPENMP=ON \
       -DKokkos_ROOT=/home/claude/kokkos-install -DopenPMD_ROOT=/home/claude/openpmd-install
 cmake --build build -j2 && (cd build && ctest)
 export OMP_PROC_BIND=false            # needed here, otherwise OpenMP runs badly
-cd validation && bash run_validation.sh > validation_results.txt   # ~10 min, sections 1-12
+cd validation && ./run_validation.sh -q -j 2 -c       # quick regression, ~2 min: after EVERY code change
+cd validation && ./run_validation.sh -j 2 -c          # full suite, ~6-9 min: at milestones / new physics
 ```
 CUDA compile check (no GPU here):
 `PATH=/usr/local/lib/python3.11/dist-packages/nvidia/cu13/bin:$PATH CUDA_HOME=/usr/local/lib/python3.11/dist-packages/nvidia/cu13 make -C build-cuda -j2 quarz`
@@ -63,10 +64,20 @@ Package for delivery (includes .git, so the history survives the container):
   thread-dependent generators.
 - E_z is the exact discrete xi-derivative of psi; Gauss's law holds in the laser region.
 - Every new feature gets a validation section in `run_validation.sh` against an independent
-  (analytic or Python) reference, and a row in README §7.
+  (analytic or Python) reference, a quick variant (`$(q FULL QUICK)`), entries in both
+  reference files (`-u` after checking the numbers), and a row in README §7.
 
-## Status (2026-10-05)
-Done and validated (README §7, `validation/validation_results.txt`):
+## Validation policy (keep it fast)
+- After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
+  if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
+  grid/solver -> 1 2 5). Full suite with `-c` at milestones and before delivering physics results.
+- Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
+  with a pattern that matches the polling shell itself.
+- CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
+- Never edit `run_validation.sh` while it is running (bash reads scripts incrementally).
+
+## Status (2026-10-06)
+Done and validated (README §7, `validation/reference_full.txt`):
 - core solver, non-uniform grid, m = 1 mode, mobile ions, parsed profiles, MPI, openPMD,
   CUDA compiles and runs on a Blackwell GB202 GPU (Thomas, 2026-10-06: ~50x vs one thread of a
   Xeon E5620; no systematic benchmark and no GPU-vs-CPU file comparison yet);

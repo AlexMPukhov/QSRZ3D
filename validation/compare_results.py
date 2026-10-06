@@ -4,7 +4,8 @@ usage: python3 compare_results.py reference.txt new.txt [sections...]
        python3 compare_results.py --update reference.txt new.txt [sections...]
 
 Lines are compared in order. Their text without the numbers must agree exactly
-(this catches e.g. "<-- above tolerance" markers, skipped or aborted sections).
+(this catches e.g. "<-- above tolerance" markers, skipped or aborted sections); only the
+"(file col)" location of a maximum difference may change.
 Every number must agree within
   * 1 unit in its last printed digit, or relative 1e-3 (round-off of OpenMP atomics can
     change the last digit of a printed result), or
@@ -47,7 +48,11 @@ def num_ok(a, b):
     return abs(x - y) <= max(1.0001 * max(ulp(a), ulp(b)), 1e-3 * max(abs(x), abs(y)))
 
 
+LOC = re.compile(r"\([^()]*\.(?:txt|bin)[^()]*\)")   # "(file col)": where a round-off maximum sits
+
+
 def compare_line(r, n):
+    r, n = LOC.sub("(...)", r), LOC.sub("(...)", n)
     if NUM.sub("#", r) != NUM.sub("#", n):
         return "text differs"
     for a, b in zip(NUM.findall(r), NUM.findall(n)):

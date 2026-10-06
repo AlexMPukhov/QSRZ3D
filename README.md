@@ -306,7 +306,7 @@ A systematic GPU benchmark (all cores of a current CPU as the reference) and a f
 comparison of GPU and CPU results are still to be done. All physics tests were run on the OpenMP
 backend. The PCR solver (the GPU default) was tested on CPU and agrees with
 Thomas to round-off. The first thing to do on a GPU machine is to run
-`ctest` and `validation/run_validation.sh`.
+`ctest` and `validation/run_validation.sh -q -c`.
 
 **Possible next steps for GPU speed:**
 
@@ -715,7 +715,29 @@ density are skipped.
 
 ## 7. Validation (OpenMP backend, 2 cores)
 
-All results can be reproduced with `validation/run_validation.sh`.
+All results can be reproduced with `validation/run_validation.sh`:
+
+```bash
+cd validation
+./run_validation.sh -j 4 -c          # full suite (sections 1-12), compared with reference_full.txt
+./run_validation.sh -q -j 4 -c       # quick regression test after code changes (~2 min on 2 cores)
+./run_validation.sh -c 9 10          # selected sections only
+```
+
+Each section runs in its own subshell; `-j N` runs N sections in parallel (the OpenMP threads
+are divided among them) and the time of every section is printed. With `-c` the printed numbers
+are compared with the stored reference (`reference_full.txt`, `reference_quick.txt`) by
+`compare_results.py`: PASS/FAIL per section, exit code 1 on failure. A number passes if it agrees
+to its last printed digit or to 10⁻³ relative (OpenMP atomics change round-off between runs);
+numbers below 10⁻⁶ measure round-off themselves and only have to stay below 10⁻⁶, except that
+an exact 0 (bit-identity of MPI and serial runs) must stay 0. The quick mode uses smaller cases
+(fewer particles and steps, a coarser reference grid in section 5, no blowout part in section 6
+and no self-focusing in section 11); its numbers are for regression only, the physics results
+quoted below are from the full mode. After a deliberate change of results, check them and store
+the new reference with `-u` (all or selected sections).
+
+Timing on 2 cores: full mode 9.5 min in sequence or 6 min with `-j 2`; quick mode 2 min with `-j 2`.
+A planted bug (π changed by 0.3 %) is caught by the quick mode in 4 of 6 sections tested.
 
 | test | result |
 |---|---|
