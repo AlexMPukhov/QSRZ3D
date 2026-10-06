@@ -33,6 +33,10 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     if (modes != 0 && modes != 1) throw std::runtime_error("modes must be 0 (axisymmetric) or 1 (m = 0 and 1)");
     m1_ = (modes == 1);
     picard_ = cfg.get_int("solver.picard", m1_ ? 3 : 1);
+    max_cells_ = cfg.get_double("pusher.max_cells_per_step", 0.0);
+    substep_max_ = cfg.get_int("pusher.substep_max", 64);
+    if (max_cells_ < 0 || substep_max_ < 1)
+        throw std::runtime_error("pusher.max_cells_per_step must be >= 0 and pusher.substep_max >= 1");
 
     grid_ = std::make_unique<RadialGrid>(cfg);
     const std::string tm = cfg.get_string("solver.tridiag", "auto");
@@ -119,7 +123,7 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     diag_base_ = m1_ ? int(D_NC1) : int(D_NC0);
     diag = View3D("diag", KL, M, diag_base_ + static_cast<int>(ion_sp_.size()));
     if (any_impact) imp_ = View3D("impact", KL, M, 3);
-    bguard = View2D("bguard", M, 3);
+    bguard = View2D("bguard", M, B_NC1);
 
     if (comm_.root()) {
         std::cout << "QUARZ - Quasistatic Arbitrary-resolution RZ code, Kokkos execution space: " << ExecSpace::name() << "\n";
@@ -178,6 +182,7 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     if (fmt != "native" && fmt != "openpmd" && fmt != "both")
         throw std::runtime_error("output.format must be native, openpmd or both");
     out_native_ = (fmt != "openpmd");
+    field_files_ = cfg.get_bool("output.field_files", true);
     if (fmt != "native") {
         opmd_ = std::make_unique<OpenPMDWriter>(cfg, outdir_, *grid_, box_, m1_, dt_);
         if (comm_.root()) {
@@ -205,7 +210,7 @@ void Simulation::zero_sources() {
     });
 }
 
-void Simulation::combine_sources(int kl) {
+void Simulation::combine_sources(int kl, Real ds) {
     const int M = grid_->N + 1;
     const int KL = box_.nloc;
     const int k = kl;
@@ -216,12 +221,13 @@ void Simulation::combine_sources(int kl) {
     const Real idxi = Real(1) / box_.dxi;
     const bool m1 = m1_;
     const bool ngp = box_.ngp;
+    const bool sub = ds != Real(0);
     Kokkos::parallel_for("combine", Range(0, M), KOKKOS_LAMBDA(int j) {
-        // d(rho - J_z)_beam / dxi.  linear: central difference (serial only);
+        // d(beam source)/dxi.  linear: central difference (serial only);
         // ngp: backward difference, the slice upstream of this rank comes from the guard row
-        auto dxi_b = [&](int comp, int gc) {
+        auto dxi_b = [&](int comp) {
             if (ngp) {
-                const Real prev = (k > 0) ? b(k - 1, j, comp) : gd(j, gc);
+                const Real prev = (k > 0) ? b(k - 1, j, comp) : gd(j, comp);
                 return (b(k, j, comp) - prev) * idxi;
             }
             if (KL == 1) return Real(0);
@@ -229,26 +235,28 @@ void Simulation::combine_sources(int kl) {
             if (k == KL - 1) return (b(KL - 1, j, comp) - b(KL - 2, j, comp)) * idxi;
             return Real(0.5) * (b(k + 1, j, comp) - b(k - 1, j, comp)) * idxi;
         };
-        s.rhot.a0(j) += bgt.a0(j) + b(k, j, B_RT0);
-        s.drho.a0(j) += dxi_b(B_RT0, 0);
-        s.jz.a0(j) += b(k, j, B_JZ0);
-        s.jp.r1(j) += b(k, j, B_JP1R);
-        s.jp.i1(j) += b(k, j, B_JP1I);
-        s.rho.a0(j) += bgr.a0(j) + b(k, j, B_RHO0);
+        // beam source at xi_k (+ ds in a sub-slice: linear extrapolation with the same xi-derivative)
+        auto bv = [&](int comp) { return sub ? b(k, j, comp) + ds * dxi_b(comp) : b(k, j, comp); };
+        s.rhot.a0(j) += bgt.a0(j) + bv(B_RT0);
+        s.drho.a0(j) += dxi_b(B_RT0);
+        s.jz.a0(j) += bv(B_JZ0);
+        s.jp.r1(j) += bv(B_JP1R);
+        s.jp.i1(j) += bv(B_JP1I);
+        s.rho.a0(j) += bgr.a0(j) + bv(B_RHO0);
         if (bgr.a0(j) > Real(0)) s.ni.a0(j) += bgr.a0(j);
         if (m1) {
-            s.rhot.ar(j) += bgt.ar(j) + b(k, j, B_RT1R);
-            s.rhot.ai(j) += bgt.ai(j) + b(k, j, B_RT1I);
-            s.drho.ar(j) += dxi_b(B_RT1R, 1);
-            s.drho.ai(j) += dxi_b(B_RT1I, 2);
-            s.jz.ar(j) += b(k, j, B_JZ1R);
-            s.jz.ai(j) += b(k, j, B_JZ1I);
-            s.jp.r0(j) += b(k, j, B_JP0R);
-            s.jp.i0(j) += b(k, j, B_JP0I);
-            s.jp.r2(j) += b(k, j, B_JP2R);
-            s.jp.i2(j) += b(k, j, B_JP2I);
-            s.rho.ar(j) += bgr.ar(j) + b(k, j, B_RHO1R);
-            s.rho.ai(j) += bgr.ai(j) + b(k, j, B_RHO1I);
+            s.rhot.ar(j) += bgt.ar(j) + bv(B_RT1R);
+            s.rhot.ai(j) += bgt.ai(j) + bv(B_RT1I);
+            s.drho.ar(j) += dxi_b(B_RT1R);
+            s.drho.ai(j) += dxi_b(B_RT1I);
+            s.jz.ar(j) += bv(B_JZ1R);
+            s.jz.ai(j) += bv(B_JZ1I);
+            s.jp.r0(j) += bv(B_JP0R);
+            s.jp.i0(j) += bv(B_JP0I);
+            s.jp.r2(j) += bv(B_JP2R);
+            s.jp.i2(j) += bv(B_JP2I);
+            s.rho.ar(j) += bgr.ar(j) + bv(B_RHO1R);
+            s.rho.ai(j) += bgr.ai(j) + bv(B_RHO1I);
         }
     });
 }
@@ -257,7 +265,7 @@ void Simulation::set_guard(const double* p) {
     const int M = grid_->N + 1;
     auto h = Kokkos::create_mirror_view(bguard);
     for (int j = 0; j < M; ++j)
-        for (int c = 0; c < 3; ++c) h(j, c) = p[3 * j + c];
+        for (int c = 0; c < B_NC1; ++c) h(j, c) = p[B_NC1 * j + c];
     Kokkos::deep_copy(bguard, h);
 }
 
@@ -265,11 +273,9 @@ void Simulation::get_last_rhot(std::vector<double>& buf) const {
     const int M = grid_->N + 1;
     auto B = Kokkos::create_mirror_view_and_copy(HostSpace(), bsrc);
     const int k = box_.nloc - 1;
-    for (int j = 0; j < M; ++j) {
-        buf.push_back(B(k, j, B_RT0));
-        buf.push_back(m1_ ? B(k, j, B_RT1R) : 0.0);
-        buf.push_back(m1_ ? B(k, j, B_RT1I) : 0.0);
-    }
+    const int nc = static_cast<int>(B.extent(2));
+    for (int j = 0; j < M; ++j)
+        for (int c = 0; c < B_NC1; ++c) buf.push_back(c < nc ? B(k, j, c) : 0.0);
 }
 
 // W+ = -(d_x + i d_y) psi:  w1 = -psi0',  w2 = -(psi1' - psi1/r),  w0 = -(conj(psi1)' + conj(psi1)/r)
@@ -483,7 +489,7 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             off += M;
         }
         set_guard(msg.data() + off);
-        off += 3 * static_cast<size_t>(M);
+        off += static_cast<size_t>(B_NC1) * M;
         if (laser_) {
             laser_->set_guard(msg.data() + off);
             off += Laser::guard_size(M);
@@ -499,20 +505,7 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             if (sp->mobile()) sp->deposit(src_, fld_);
         if (laser_) laser_->advance_slice(kl, src_.chi.a0);   // envelope of this slice -> time n+1
         combine_sources(kl);
-
-        solver_->solve(OpKind::L0, src_.rhot.a0, fld_.psi.a0, View1D(), View1D(), -1.0);
-        solver_->solve(OpKind::L0, src_.drho.a0, fld_.ez.a0, View1D(), View1D(), -1.0);
-        if (m1_) {
-            solver_->solve(OpKind::L1D, src_.rhot.ar, fld_.psi.ar, View1D(), View1D(), -1.0);
-            solver_->solve(OpKind::L1D, src_.rhot.ai, fld_.psi.ai, View1D(), View1D(), -1.0);
-            solver_->solve(OpKind::L1D, src_.drho.ar, fld_.ez.ar, View1D(), View1D(), -1.0);
-            solver_->solve(OpKind::L1D, src_.drho.ai, fld_.ez.ai, View1D(), View1D(), -1.0);
-        }
-        compute_wplus();
-        compute_bz();
-        for (auto& sp : species_)
-            if (sp->mobile()) sp->deposit_S(fld_, src_.S);
-        solve_bplus(k);
+        solve_slice_fields();
         store_slice(kl);
         for (size_t s = 0; s < ion_sp_.size(); ++s) {   // ionization with the fields of this slice
             PlasmaSpecies& ion = *species_[ion_sp_[s]];
@@ -521,9 +514,26 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             ion_acc_[s][1] += r.born_wp2;
             ion.deposit_charge_state(diag, kl, diag_base_ + static_cast<int>(s));
         }
-        if (k < K - 1)   // the last local push produces the state entering the next rank
-            for (auto& sp : species_)
-                if (sp->mobile()) sp->push(fld_, dxi, k);
+        if (k < K - 1) {   // the last local push produces the state entering the next rank
+            // adaptive sub-slicing: if plasma particles would cross more than max_cells_ radial cells
+            // in this step, it is split into nsub sub-slices, each with its own deposit and field
+            // solve (beam rho - J_z extrapolated from this slice, laser <a^2> and ionization of this
+            // slice); only the regular slices are stored
+            const int nsub = subslices(dxi);
+            const Real h = dxi / nsub;
+            for (int ss = 0; ss < nsub; ++ss) {
+                if (ss > 0) {
+                    zero_sources();
+                    for (auto& sp : species_)
+                        if (sp->mobile()) sp->deposit(src_, fld_);
+                    combine_sources(kl, ss * h);
+                    solve_slice_fields();
+                }
+                for (auto& sp : species_)
+                    if (sp->mobile()) sp->push(fld_, h);
+            }
+            nsub_step_ += nsub - 1;
+        }
     }
     if (laser_) laser_->end_sweep();
     if (k0 + KL == K)   // the last rank: plasma state at the end of the box
@@ -531,8 +541,36 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
     Kokkos::fence();
 }
 
+void Simulation::solve_slice_fields() {
+    solver_->solve(OpKind::L0, src_.rhot.a0, fld_.psi.a0, View1D(), View1D(), -1.0);
+    solver_->solve(OpKind::L0, src_.drho.a0, fld_.ez.a0, View1D(), View1D(), -1.0);
+    if (m1_) {
+        solver_->solve(OpKind::L1D, src_.rhot.ar, fld_.psi.ar, View1D(), View1D(), -1.0);
+        solver_->solve(OpKind::L1D, src_.rhot.ai, fld_.psi.ai, View1D(), View1D(), -1.0);
+        solver_->solve(OpKind::L1D, src_.drho.ar, fld_.ez.ar, View1D(), View1D(), -1.0);
+        solver_->solve(OpKind::L1D, src_.drho.ai, fld_.ez.ai, View1D(), View1D(), -1.0);
+    }
+    compute_wplus();
+    compute_bz();
+    for (auto& sp : species_)
+        if (sp->mobile()) sp->deposit_S(fld_, src_.S);
+    solve_bplus(0);
+}
+
+int Simulation::subslices(Real dxi) const {
+    if (!(max_cells_ > 0)) return 1;
+    Real c = 0;
+    double hlast = 0;
+    for (const auto& sp : species_)
+        if (sp->mobile()) { c = std::max(c, sp->max_cells(dxi)); hlast = std::max(hlast, sp->last_step()); }
+    int n = c <= max_cells_ ? 1 : static_cast<int>(std::ceil(c / max_cells_));
+    // the step may at most double: at least ceil(dxi / (2 h_last)) sub-slices after finer steps
+    if (hlast > 0) n = std::max(n, static_cast<int>(std::ceil(dxi / (2 * hlast) - 1e-9)));
+    return std::min(substep_max_, n);
+}
+
 // message to the downstream rank for step n:
-//   [mobile species states][B+ (6 M)][guard rho-J_z of the last local slice (3 M)][beam particles]
+//   [mobile species states (incl. AB history positions)][B+ (6 M)][beam sources of the last local slice (15 M)][beam particles]
 std::vector<double> Simulation::make_message(int n) {
     std::vector<double> m;
     m.push_back(static_cast<double>(n));
@@ -929,6 +967,8 @@ void Simulation::run() {
 
         long lost = 0;
         for (auto& s : species_) if (s->mobile()) lost += s->lost_count();
+        const double nsub = nsub_step_;
+        nsub_step_ = 0;
         lost_total_ += lost;
 
         write_beam_output(n);
@@ -939,7 +979,7 @@ void Simulation::run() {
         const bool field_out = out_every_ > 0 && n % out_every_ == 0;
         const bool beam_out = beam_dump_every_ > 0 && n % beam_dump_every_ == 0;
         if (field_out) {
-            if (out_native_) write_fields(outdir_ + "/fields_" + buf + ".bin");
+            if (out_native_ && field_files_) write_fields(outdir_ + "/fields_" + buf + ".bin");
             write_axis(outdir_ + "/axis_" + buf + ".txt");
         }
         if (opmd_ && (field_out || beam_out)) {
@@ -953,6 +993,7 @@ void Simulation::run() {
                       << std::setprecision(3) << tf << " s" << std::defaultfloat;
             if (P > 1) std::cout << " (rank 0 of " << P << ", pipelined)";
             if (lost) std::cout << "   (" << lost << " plasma particles removed as trapped)";
+            if (nsub > 0) std::cout << "   (" << static_cast<long>(nsub) << " extra sub-slices)";
             std::cout << std::endl;
         } else if (lost) {
             std::cout << "rank " << rank << " step " << n << ": " << lost

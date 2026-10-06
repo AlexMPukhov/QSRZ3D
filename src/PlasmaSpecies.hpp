@@ -30,6 +30,9 @@ struct ABCoeffs {
     int order = 1;
 };
 ABCoeffs make_ab(int order);
+// Adams-Bashforth coefficients for non-uniform steps: history points t[0] (current) > t[1] > ...
+// (order of them), new step h; c[m] = (1/h) * integral over [t0, t0 + h] of the Lagrange basis l_m
+ABCoeffs make_ab_variable(int order, const double* t, double h);
 
 struct IonizeResult {
     double born_w = 0, born_wp2 = 0;   // sum of weights of the new electrons, sum w p_perp^2
@@ -50,7 +53,14 @@ public:
     // S+ (needs W+, E_z, B_z)
     void deposit_S(const SliceFields& f, const MVector& S) const;
     // advance slice k -> k+1
-    void push(const SliceFields& f, Real dxi, int k);
+    // one Adams-Bashforth step of length h (the steps may vary: adaptive sub-slicing)
+    void push(const SliceFields& f, Real h);
+    // largest number of radial cells a particle would cross in a step dxi (straight path, cell
+    // size at its closest approach to the axis): criterion for adaptive sub-slicing
+    Real max_cells(Real dxi) const;
+    // length of the last push (0 before the first): multistep methods are only stable if the
+    // step grows by at most ~2 from one push to the next, so sub-slicing relaxes gradually
+    double last_step() const { return npush_ > 0 ? xi_cur_ - xi_slot_[(npush_ - 1) % ab_.order] : 0.0; }
 
     // ---- ionization (species with <name>.element or <name>.ionization_energies_eV)
     bool ionizable() const { return ionizable_; }
@@ -96,6 +106,11 @@ private:
     Real max_qsa_ = 35;   // particles with gamma/Delta = 1/(1 - v_z) above this are removed (trapped)
     Real density_factor_ = 1;
     ABCoeffs ab_;
+    // AB history bookkeeping (host; the same for all particles of the species, travels with them
+    // between MPI ranks): number of pushes since the load, xi of the history point in each slot
+    long npush_ = 0;
+    double xi_cur_ = 0;
+    double xi_slot_[5] = {0, 0, 0, 0, 0};
     int Np_ = 0;      // active particles (loaded + born in this sweep)
     int Nload_ = 0;   // loaded at the head of the box
     int cap_ = 0;     // allocated

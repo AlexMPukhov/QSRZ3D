@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..12 (default: all)
+#   sections   numbers 1..13 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 12)}
+SECTIONS=${*:-$(seq 1 13)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -197,6 +197,25 @@ sec12() {
     echo " impact ionization of Ar by a rigid 400 GeV proton beam (Bethe, M^2 = 4.22, C = 37.93; nsplit = 2000):"
     python3 ion_check.py impact out_ion_impact 1e15 4.22:37.93 10 1 15 50 427 1
     rm -rf out_ion_*
+}
+
+sec13() {
+    echo "== 13. adaptive sub-slicing of the plasma push (pusher.max_cells_per_step) =="
+    # paper case (pinched witness, mobile ions, axis cell 5e-4), box to xi = 12, dxi = 0.01
+    local P="../paper/inputs/conv_s1.in xi.max=12 output.field_files=0"
+    $QS $P xi.step=$(q 0.000625 0.0025) output.dir=out_ss_ref > out_ss_ref.log
+    $QS $P xi.step=0.01 output.dir=out_ss_plain > out_ss_plain.log
+    $QS $P xi.step=0.01 pusher.max_cells_per_step=1 output.dir=out_ss_sub > out_ss_sub.log
+    echo " dxi = 0.01 without / with sub-slicing vs reference dxi = $(q 0.000625 0.0025) (relative r.m.s. errors on the axis):"
+    python3 subslice_check.py out_ss_ref out_ss_plain out_ss_sub
+    if [ -n "$MPIRUN" ]; then
+        local S="$P xi.step=0.01 pusher.max_cells_per_step=1 beams.xi_shape=ngp xi.max=$(q 12 10)"
+        OMP_NUM_THREADS=1 $QS $S output.dir=out_ss_s > /dev/null
+        OMP_NUM_THREADS=1 $MPIRUN 2 $QS $S output.dir=out_ss_p2 > /dev/null
+        echo " with sub-slicing, 2 MPI ranks vs serial (expected: bit-identical, 0):"
+        python3 cmp_runs.py out_ss_s out_ss_p2 0 || true
+    fi
+    rm -rf out_ss_*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

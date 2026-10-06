@@ -24,6 +24,26 @@ ABCoeffs make_ab(int order) {
     return ab;
 }
 
+ABCoeffs make_ab_variable(int order, const double* t, double h) {
+    ABCoeffs ab;
+    ab.order = order;
+    // 3-point Gauss-Legendre on [t0, t0 + h]: exact for the polynomial degree <= 4 needed here
+    const double gx[3] = {-0.7745966692414834, 0.0, 0.7745966692414834};
+    const double gw[3] = {5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0};
+    for (int m = 0; m < order; ++m) {
+        double s = 0;
+        for (int q = 0; q < 3; ++q) {
+            const double tt = t[0] + 0.5 * h * (1.0 + gx[q]);
+            double l = 1;
+            for (int n = 0; n < order; ++n)
+                if (n != m) l *= (tt - t[n]) / (t[m] - t[n]);
+            s += 0.5 * gw[q] * l;   // (1/h) * (h/2) * w
+        }
+        ab.c[m] = s;
+    }
+    return ab;
+}
+
 namespace {
 // geometry of one particle: radius, azimuth, hat-function weights
 struct PGeo {
@@ -177,6 +197,8 @@ void PlasmaSpecies::load(Real z, unsigned long long seed) {
     Kokkos::deep_copy(lost_, 0);
     Kokkos::deep_copy(fresh_, 0);
     Np_ = Nload_;
+    npush_ = 0;
+    xi_cur_ = 0;
     if (ionizable_) {
         Kokkos::deep_copy(lev_, Real(ion_.P.z0));
         auto wq = wq_; auto w = w_;
@@ -214,6 +236,9 @@ void PlasmaSpecies::pack_state(std::vector<double>& buf) const {
     auto hh = Kokkos::create_mirror_view_and_copy(HostSpace(), hist_);
     for (int sl = 0; sl < ab_.order; ++sl)
         for (int v = 0; v < 5; ++v) buf.insert(buf.end(), &hh(sl, v, 0), &hh(sl, v, 0) + Np_);
+    buf.push_back(static_cast<double>(npush_));
+    buf.push_back(xi_cur_);
+    for (int sl = 0; sl < ab_.order; ++sl) buf.push_back(xi_slot_[sl]);
 }
 
 size_t PlasmaSpecies::unpack_state(const double* p) {
@@ -239,6 +264,9 @@ size_t PlasmaSpecies::unpack_state(const double* p) {
             off += Np_;
         }
     Kokkos::deep_copy(hist_, hh);
+    npush_ = static_cast<long>(p[off++]);
+    xi_cur_ = p[off++];
+    for (int sl = 0; sl < ab_.order; ++sl) xi_slot_[sl] = p[off++];
     return off;
 }
 
@@ -400,8 +428,26 @@ void PlasmaSpecies::deposit_S(const SliceFields& f, const MVector& S) const {
     });
 }
 
-void PlasmaSpecies::push(const SliceFields& f, Real dxi, int k) {
+void PlasmaSpecies::push(const SliceFields& f, Real dxi) {
     if (frozen_) return;
+    const int ordh = ab_.order;
+    const int k = static_cast<int>(npush_ % ordh);   // history slot of this push (k % ord below)
+    const bool first0 = (npush_ == 0);
+    // xi of the history points: the first push fills all slots with the current force, at fictitious
+    // uniformly spaced points (then any coefficients give the Euler step)
+    if (first0)
+        for (int m = 0; m < ordh; ++m) xi_slot_[(k - m + ordh) % ordh] = xi_cur_ - m * static_cast<double>(dxi);
+    else
+        xi_slot_[k] = xi_cur_;
+    double tn[5];
+    bool uniform = true;
+    for (int m = 0; m < ordh; ++m) {
+        tn[m] = xi_slot_[(k - m + ordh) % ordh];
+        if (m > 0 && std::abs((tn[m - 1] - tn[m]) - static_cast<double>(dxi)) > 1e-9 * dxi) uniform = false;
+    }
+    const ABCoeffs abv = uniform ? ab_ : make_ab_variable(ordh, tn, dxi);
+    ++npush_;
+    xi_cur_ += dxi;
     const GridD g = grid_.d;
     auto x = x_; auto y = y_; auto px = px_; auto py = py_; auto dl = dl_; auto w = w_;
     auto hist = hist_;
@@ -412,10 +458,10 @@ void PlasmaSpecies::push(const SliceFields& f, Real dxi, int k) {
     const Real qm0 = q_ / m_;
     const Real dmin = delta_min_;
     const Real qsamax = max_qsa_;
-    const ABCoeffs ab = ab_;
+    const ABCoeffs ab = abv;
     const int ord = ab.order;
-    const int slot = k % ord;
-    const bool first = (k == 0);
+    const int slot = k;
+    const bool first = first0;
     const Real R = grid_.R;
     const bool m1 = m1_;
     Kokkos::parallel_for("plasma.push", Range(0, Np_), KOKKOS_LAMBDA(int i) {
@@ -480,6 +526,26 @@ void PlasmaSpecies::push(const SliceFields& f, Real dxi, int k) {
         }
         x(i) = xn; y(i) = yn; px(i) = pxn; py(i) = pyn; dl(i) = dn;
     });
+}
+
+Real PlasmaSpecies::max_cells(Real dxi) const {
+    if (frozen_ || Np_ == 0) return 0;
+    const GridD g = grid_.d;
+    auto x = x_; auto y = y_; auto px = px_; auto py = py_; auto dl = dl_; auto w = w_;
+    Real mx = 0;
+    Kokkos::parallel_reduce("plasma.max_cells", Range(0, Np_), KOKKOS_LAMBDA(int i, Real& m) {
+        if (w(i) == Real(0)) return;
+        const Real X = x(i), Y = y(i), D = dl(i);
+        const Real X1 = X + dxi * px(i) / D, Y1 = Y + dxi * py(i) / D;
+        // closest approach of the straight path to the axis
+        const Real dx = X1 - X, dy = Y1 - Y, l2 = dx * dx + dy * dy;
+        Real t = l2 > Real(0) ? -(X * dx + Y * dy) / l2 : Real(0);
+        t = t < Real(0) ? Real(0) : (t > Real(1) ? Real(1) : t);
+        const Real xm = X + t * dx, ym = Y + t * dy;
+        const Real c = Kokkos::sqrt(l2) * g.inv_h(g.locate(Kokkos::sqrt(xm * xm + ym * ym)));
+        if (c > m) m = c;
+    }, Kokkos::Max<Real>(mx));
+    return mx;
 }
 
 // ============================================================================ ionization

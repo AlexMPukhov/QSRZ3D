@@ -72,3 +72,12 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2], max rel diff 0.00e+00
     xi - xi0 =   +0.0: ionized fraction code / analytic  r/sr in [0.0,0.5): 5.0465e-03 / 4.7337e-03  r/sr in [0.5,1.0): 3.4456e-03 / 3.7257e-03  r/sr in [1.0,2.0): 1.8155e-03 / 1.6021e-03  r/sr in [2.0,3.0): 3.1224e-04 / 2.5598e-04
     xi - xi0 =  +15.0: ionized fraction code / analytic  r/sr in [0.0,0.5): 8.0185e-03 / 7.9391e-03  r/sr in [0.5,1.0): 5.4797e-03 / 6.2505e-03  r/sr in [1.0,2.0): 2.6843e-03 / 2.6896e-03  r/sr in [2.0,3.0): 4.6321e-04 / 4.2995e-04
     xi - xi0 =  +50.0: ionized fraction code / analytic  r/sr in [0.0,0.5): 9.3460e-03 / 9.4161e-03  r/sr in [0.5,1.0): 6.7290e-03 / 7.4146e-03  r/sr in [1.0,2.0): 3.1222e-03 / 3.1914e-03  r/sr in [2.0,3.0): 5.7840e-04 / 5.1029e-04
+== 13. adaptive sub-slicing of the plasma push (pusher.max_cells_per_step) ==
+ dxi = 0.01 without / with sub-slicing vs reference dxi = 0.0025 (relative r.m.s. errors on the axis):
+  reference out_ss_ref: integral of Ez over the closure spike (xi 8.9..9.2) = -0.291
+  out_ss_plain   extra sub-slices     0 | behind the spike: Ez 2.1e-02 psi 2.1e-02 | witness: Ez 4.5e-05 psi 5.1e-06 | spike integral -0.377
+  out_ss_sub     extra sub-slices  1642 | behind the spike: Ez 3.6e-03 psi 1.8e-03 | witness: Ez 4.2e-05 psi 2.3e-06 | spike integral -0.516
+ with sub-slicing, 2 MPI ranks vs serial (expected: bit-identical, 0):
+  axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
+  beamlog  max rel diff 0.00e+00  (beams.txt col 1)
+  dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)
