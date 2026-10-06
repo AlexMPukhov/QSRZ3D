@@ -108,7 +108,19 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - GPU: only Thomas' first speed number (~50x vs one old CPU thread). Needed for the paper: deck,
   time per sweep GPU vs all cores of a current CPU, cmp_runs.py GPU vs CPU (TODO in the .tex).
 
-## Next steps (proposed to Alexander)
+- Paper: Alexander submits v1 to arXiv now (priority for the non-uniform radial grid); referee
+  round used for items 1-3 below. The manuscript cites https://github.com/AlexMPukhov/QUARZ,
+  which is still PRIVATE: it must be made public (or a public release created) before arXiv.
+
+## Next steps (agreed 2026-10-06, before the revised manuscript)
+1. Cross-code benchmarks: beam-driven cases vs LCODE 2D and QPAD/HiPACE++; laser vs FBPIC.
+2. Plasma push near the axis with tiny cells: adaptive/substepped xi advance, or an error test.
+3. Long-term stability/noise behind long drivers (AWAKE-length).
+Later: m >= 2 modes; trapped electrons -> beam particles; phase-corrected / m = 1 laser
+envelope; checkpoint/restart, beams from openPMD files, warm plasma, Python/PICMI interface;
+GPU benchmark vs a full current CPU node, fused slice kernels; Bethe data beyond Ar.
+
+## Earlier proposals
 - Convert trapped plasma electrons into beam particles (charge w * dt per step) so that
   ionization injection can be followed through acceleration.
 - Benedetti phase-corrected envelope; m = 1 laser envelope.
