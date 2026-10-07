@@ -81,3 +81,14 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2], max rel diff 0.00e+00
   axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
   beamlog  max rel diff 0.00e+00  (beams.txt col 1)
   dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)
+== 14. radial smoothing of the plasma sources (plasma.smooth_length = 0.005) ==
+ cold reference vs smoothed runs (axis cells 1e-3, 2.5e-4 at dxi = 0.0025; 5e-4 at dxi = 0.005):
+  out_sm_cold      closure: min Ez   -20.4  max ne(0)   1400636   (cold, not smoothed)
+  out_sm_h1e-3     closure: min Ez    -8.2  max ne(0)     14473 | vs cold: behind Ez 3.5e-03 psi 4.8e-03, witness Ez 1.0e-04 psi 6.4e-05
+  out_sm_h2.5e-4   closure: min Ez    -8.4  max ne(0)     15110 | vs cold: behind Ez 3.6e-03 psi 1.2e-03, witness Ez 2.5e-04 psi 8.0e-05
+  out_sm_dxi5e-3   closure: min Ez    -8.4  max ne(0)      6843 | vs cold: behind Ez 3.6e-03 psi 5.6e-03, witness Ez 2.1e-04 psi 7.9e-05
+  smoothed runs: min Ez -8.31 +- 0.08 (spread over axis cells and xi steps)
+ with smoothing, 2 MPI ranks vs serial (expected: bit-identical, 0):
+  axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
+  beamlog  max rel diff 0.00e+00  (beams.txt col 1)
+  dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)

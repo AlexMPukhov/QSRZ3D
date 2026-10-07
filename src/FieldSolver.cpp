@@ -90,6 +90,58 @@ FieldSolver::FieldSolver(const RadialGrid& g, TridiagMethod method) : grid_(g), 
     dw_ = View1D("fs.dw", M);
 }
 
+void FieldSolver::set_filter(const std::vector<Real>& a2) {
+    const RadialGrid& g = grid_;
+    const int N = g.N, M = N + 1;
+    filter_on_ = false;
+    for (int j = 0; j < N; ++j)
+        if (a2[j] > 0) filter_on_ = true;
+    if (!filter_on_) return;
+    fw_ = View1D("fs.fw", M);
+    // n = 0: (V_j f_j - a^2 flux differences) = V_j s_j; flux_{j+1/2} = 2 pi a^2 r_{j+1/2} (f_{j+1} - f_j) / h_j
+    {
+        std::vector<Real> a(M, 0), b(M, 1), c(M, 0);
+        for (int j = 0; j <= N; ++j) {
+            const Real invV = 2 * PI / g.V[j];
+            const Real am = (j > 0) ? a2[j - 1] * g.rmid[j - 1] / g.h[j - 1] * invV : 0.0;
+            const Real cp = (j < N) ? a2[j] * g.rmid[j] / g.h[j] * invV : 0.0;   // zero-flux wall
+            a[j] = -am; c[j] = -cp; b[j] = 1 + am + cp;
+        }
+        F_[0].a = to_device("F0.a", a); F_[0].b = to_device("F0.b", b); F_[0].c = to_device("F0.c", c);
+        F_[0].axis_regular = true;
+    }
+    // n >= 1: finite volume as L_n, with a^2 inside the flux
+    for (int n = 1; n <= 2; ++n) {
+        std::vector<Real> a(M, 0), b(M, 1), c(M, 0);
+        auto kp = [&](int j) { return a2[j] / (g.h[j] * std::pow(g.rmid[j], 2 * n - 1)); };
+        for (int j = 1; j < N; ++j) {
+            const Real dV = 0.5 * (g.h[j] + g.h[j - 1]);
+            const Real pre = std::pow(g.r[j], n - 1) / dV;
+            c[j] = -pre * std::pow(g.r[j + 1], n) * kp(j);
+            a[j] = -pre * std::pow(g.r[j - 1], n) * kp(j - 1);
+            b[j] = 1 + pre * std::pow(g.r[j], n) * (kp(j) + kp(j - 1));
+        }
+        const std::string s = "F" + std::to_string(n);
+        F_[n].a = to_device((s + ".a").c_str(), a);
+        F_[n].b = to_device((s + ".b").c_str(), b);
+        F_[n].c = to_device((s + ".c").c_str(), c);
+        F_[n].axis_regular = false;
+    }
+}
+
+void FieldSolver::filter(int n, const View1D& f) const {
+    if (!filter_on_) return;
+    const Op& o = F_[n];
+    const int N = grid_.N;
+    auto b0 = o.b; auto bw = bw_; auto dw = dw_;
+    Kokkos::parallel_for("fs.filter_prep", Range(0, N + 1), KOKKOS_LAMBDA(int j) {
+        bw(j) = b0(j);
+        dw(j) = f(j);   // n >= 1: rows 0 and N are identity rows (values passed through unchanged)
+    });
+    tri_.solve(o.a, bw, o.c, dw, fw_);
+    Kokkos::deep_copy(f, fw_);
+}
+
 const FieldSolver::Op& FieldSolver::op(OpKind k) const {
     switch (k) {
         case OpKind::L0: return L0_;

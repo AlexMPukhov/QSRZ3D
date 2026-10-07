@@ -45,6 +45,10 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     else if (tm == "pcr") method = TridiagMethod::PCR;
     else if (tm != "auto") throw std::runtime_error("solver.tridiag must be auto|thomas|pcr");
     solver_ = std::make_unique<FieldSolver>(*grid_, method);
+    // radial smoothing of the plasma sources (regularizes the axis caustic at the bubble back)
+    smooth_a_ = cfg.get_double("plasma.smooth_length", 0.0);
+    if (smooth_a_ < 0) throw std::runtime_error("plasma.smooth_length must be >= 0");
+    if (smooth_a_ > 0) solver_->set_filter(std::vector<Real>(grid_->N, smooth_a_ * smooth_a_));
 
     box_.xi_min = cfg.get_double("xi.min", 0.0);
     const Real xi_max = cfg.get_double("xi.max");
@@ -143,6 +147,9 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
                       << s->num_particles() << " macro-particles\n";
         for (int i : ion_sp_) std::cout << "Species '" << species_[i]->name() << "'" << species_[i]->ion_info().description() << "\n";
         std::cout << "Neutralising immobile background: " << (neutralize_ ? "yes" : "no") << "\n";
+        if (smooth_a_ > 0) {
+            std::cout << "Radial smoothing of the plasma sources: a = " << smooth_a_ << "\n";
+        }
         for (size_t b = 0; b < beams_.size(); ++b)
             std::cout << "Beam '" << beams_[b]->name() << "': " << nglobal[b] << " macro-particles"
                       << (beams_[b]->rigid() ? " (rigid)" : "") << "\n";
@@ -473,6 +480,12 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             bgr.a0(j) -= b.a0(j); bgr.ar(j) -= b.ar(j); bgr.ai(j) -= b.ai(j);
         });
     }
+    if (solver_->filter_on())   // the background is smoothed like the plasma (neutral plasma edge)
+        for (int c = 0; c < 2; ++c) {
+            MScalar& m = c == 0 ? bg_rhot_ : bg_rho_;
+            solver_->filter(0, m.a0);
+            if (m1_) { solver_->filter(1, m.ar); solver_->filter(1, m.ai); }
+        }
 
     if (comm_.rank() == 0) {
         // B+ initial guess for the Picard iteration: zero at the head; no beam upstream of the box
@@ -503,6 +516,7 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
         if (laser_) laser_->prepare_slice(kl, fld_);   // <a^2> of this slice (time n)
         for (auto& sp : species_)
             if (sp->mobile()) sp->deposit(src_, fld_);
+        filter_plasma_sources();
         if (laser_) laser_->advance_slice(kl, src_.chi.a0);   // envelope of this slice -> time n+1
         combine_sources(kl);
         solve_slice_fields();
@@ -526,6 +540,7 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
                     zero_sources();
                     for (auto& sp : species_)
                         if (sp->mobile()) sp->deposit(src_, fld_);
+                    filter_plasma_sources();
                     combine_sources(kl, ss * h);
                     solve_slice_fields();
                 }
@@ -554,7 +569,31 @@ void Simulation::solve_slice_fields() {
     compute_bz();
     for (auto& sp : species_)
         if (sp->mobile()) sp->deposit_S(fld_, src_.S);
+    if (solver_->filter_on()) {
+        const MVector& S = src_.S;
+        solver_->filter(1, S.r1); solver_->filter(1, S.i1);
+        if (m1_) {
+            solver_->filter(0, S.r0); solver_->filter(0, S.i0);
+            solver_->filter(2, S.r2); solver_->filter(2, S.i2);
+        }
+    }
     solve_bplus(0);
+}
+
+// plasma deposit only (beams and the background are added later in combine_sources; the background
+// is filtered once per step). Linear and xi-independent, so E_z = d psi / d xi stays exact.
+void Simulation::filter_plasma_sources() {
+    if (!solver_->filter_on()) return;
+    const SliceSources& s = src_;
+    for (const MScalar* m : {&s.rhot, &s.drho, &s.jz, &s.chi, &s.rho, &s.ne, &s.ni}) {
+        solver_->filter(0, m->a0);
+        if (m1_) { solver_->filter(1, m->ar); solver_->filter(1, m->ai); }
+    }
+    solver_->filter(1, s.jp.r1); solver_->filter(1, s.jp.i1);
+    if (m1_) {
+        solver_->filter(0, s.jp.r0); solver_->filter(0, s.jp.i0);
+        solver_->filter(2, s.jp.r2); solver_->filter(2, s.jp.i2);
+    }
 }
 
 int Simulation::subslices(Real dxi) const {

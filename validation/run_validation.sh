@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..13 (default: all)
+#   sections   numbers 1..14 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 13)}
+SECTIONS=${*:-$(seq 1 14)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -216,6 +216,27 @@ sec13() {
         python3 cmp_runs.py out_ss_s out_ss_p2 0 || true
     fi
     rm -rf out_ss_*
+}
+
+sec14() {
+    echo "== 14. radial smoothing of the plasma sources (plasma.smooth_length = 0.005) =="
+    # paper case (pinched witness, mobile ions), box to xi = 12: cold axis caustic at the bubble back
+    local P="../paper/inputs/conv_s1.in xi.max=12 output.field_files=0" S="plasma.smooth_length=0.005"
+    local DX=$(q 0.00125 0.0025)
+    $QS $P xi.step=$(q 0.000625 0.00125) output.dir=out_sm_cold > /dev/null
+    $QS $P $S xi.step=$DX "grid.regions=0.05:0.001 2.5:0.01 8.0:0.05" output.dir=out_sm_h1e-3 > /dev/null
+    $QS $P $S xi.step=$DX "grid.regions=0.05:0.00025 2.5:0.01 8.0:0.05" output.dir=out_sm_h2.5e-4 > /dev/null
+    $QS $P $S xi.step=0.005 output.dir=out_sm_dxi5e-3 > /dev/null
+    echo " cold reference vs smoothed runs (axis cells 1e-3, 2.5e-4 at dxi = $DX; 5e-4 at dxi = 0.005):"
+    python3 smoothing_check.py out_sm_cold out_sm_h1e-3 out_sm_h2.5e-4 out_sm_dxi5e-3
+    if [ -n "$MPIRUN" ]; then
+        local M="$P $S xi.step=0.01 beams.xi_shape=ngp xi.max=$(q 12 10)"
+        OMP_NUM_THREADS=1 $QS $M output.dir=out_sm_s > /dev/null
+        OMP_NUM_THREADS=1 $MPIRUN 2 $QS $M output.dir=out_sm_p2 > /dev/null
+        echo " with smoothing, 2 MPI ranks vs serial (expected: bit-identical, 0):"
+        python3 cmp_runs.py out_sm_s out_sm_p2 0 || true
+    fi
+    rm -rf out_sm_*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

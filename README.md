@@ -129,8 +129,43 @@ on the grid with h₀ = 5·10⁻⁴, the wake behind the bubble at Δξ = 0.01 i
 0.2 % (E_z) and 0.05 % (ψ), like Δξ = 0.00125 without sub-slicing at a third of the cost, with
 no change around the witness. The E_z spike at the bubble closure itself is a near-singular
 caustic (Lotov 2003): its height and fine structure depend on Δξ and on the cells at any step
-size, and sub-slicing does not make them converge. At the default Δξ = 0.005 the wake
-behind the bubble is already accurate to about 0.3 % in this case.
+size, and sub-slicing does not make them converge (use `plasma.smooth_length`, below). At the
+default Δξ = 0.005 the wake behind the bubble is already accurate to about 0.3 % in this case.
+
+**Regularization of the bubble-back singularity** (`plasma.smooth_length` = a, off by default).
+For a cold plasma and a perfectly axisymmetric driver, the electrons closing the bubble converge
+onto the axis at one point: the density and E_z there are singular, and on a grid with small
+axis cells the spike grows without limit as the cells and Δξ are refined (peak E_z −20 → −77,
+axis density ~10⁶ in the pinched-witness case). Real plasmas are not cold and real drivers not
+perfectly cylindrical; the spike carries no energy and is unphysical. With a > 0 every plasma
+source (ρ − J_z, its ξ-derivative, J_z, J⊥, χ, S, the densities; also the neutralizing
+background) is smoothed radially in each slice as
+
+    f ← (1 − a²∇⊥²)⁻¹ f,
+
+which gives every ring a finite width a (2D Green's function K₀(r/a)/(2πa²)). It is solved with
+the tridiagonal machinery of the field solver, per azimuthal component with its own L_n
+(n = 0: lumped FEM with a zero-flux wall, so the charge is conserved exactly and a uniform
+plasma is unchanged). The filter is linear and the same in every slice, so E_z stays the exact
+ξ-derivative of ψ, and MPI runs stay bit-identical to serial runs. The beams are not filtered.
+The fields acting on the particles are not filtered either.
+
+With a fixed, the spike becomes a resolved, converged quantity: for the pinched-witness case,
+peak E_z −8.8 (a = 0.005) on axis cells from 10⁻³ to 2.5·10⁻⁴ and for all Δξ ≤ a, with a bounded
+axis density. The rest of the solution changes in proportion to a (relative to the cold solution):
+
+| a | peak E_z at the closure | wake behind the bubble (E_z, ψ) | around the witness (E_z) |
+|---|---|---|---|
+| 0 (cold) | −20 … −77, grows with resolution | – | – |
+| 0.0025 | −11.5 | 0.3–0.6 % | 7·10⁻⁵ |
+| 0.005 | −8.8 | 0.4–0.8 % | 2·10⁻⁴ |
+| 0.01 | −6.8 | 0.7–0.9 % | 6·10⁻⁴ |
+| 0.02 | −5.0 | 2–4 % | 1.6·10⁻³ |
+
+Recommended: a ≈ 0.005 (in k_p⁻¹), the axis cell ≤ a and Δξ ≤ a. A finite temperature
+(`electrons.uth`) also bounds the spike, but its height then depends on the few particles that
+pass closest to the axis (with uth = 0.01, peak E_z −41 or −5 for different seeds), so it is not a
+reliable regularization by itself.
 
 **Species.** Any number of species can be defined (electrons, mobile ions of
 any charge and mass). Immobile species are added as a static background. If
@@ -500,6 +535,7 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `pusher.ab_order` | 3 | Adams–Bashforth order 1–5 for plasma rings. 2–3 is most robust at bubble closure; 5 can blow up there. |
 | `pusher.delta_min` | 10⁻³ | rings with γ − p_z below this are removed (trapped) |
 | `pusher.max_qsa_factor` | 35 | rings with γ/(γ − p_z) above this are removed (trapped; the quasi-static weight diverges) |
+| `plasma.smooth_length` | 0 | a > 0: radial smoothing of all plasma sources, f ← (1 − a²∇⊥²)⁻¹ f, which regularizes the singular density/E_z spike at the closure of a bubble (§1, plasma push). 0.005 is a good value; the axis cell and Δξ should be ≤ a. |
 | `pusher.max_cells_per_step` | 0 | adaptive sub-slicing: split a ξ step into sub-slices if a plasma particle would cross more radial cells than this (0 = off; 1 is a good value). The step line of the log reports the extra sub-slices (rank 0). |
 | `pusher.substep_max` | 64 | largest number of sub-slices per step |
 | `solver.tridiag` | `auto` | `auto` (Thomas on host, PCR on device) \| `thomas` \| `pcr` |
@@ -837,6 +873,18 @@ and analytic beam densities.
 | Off (default) | results bit-identical to the code without sub-slicing |
 | 2, 3 MPI ranks vs serial with sub-slicing (`beams.xi_shape = ngp`) | bit-identical |
 | Hosing (`modes = 1`), LWFA with laser | run; LWFA: ψ on the axis vs Δξ/4 0.23 % → 0.19 % |
+
+**Regularization of the bubble back** (`plasma.smooth_length`; section 14; `test_filter`):
+
+| test | result |
+|---|---|
+| Unit: filter on a stretched grid, manufactured solutions r^n e^{−r²/w²}, n = 0, 1, 2 | second order (1.89, 1.98, 1.98) |
+| Unit: n = 0 total charge, constants | conserved to 10⁻¹⁵, preserved to 10⁻¹⁴ |
+| Unit: point charge on the axis vs K₀(r/a)/(2πa²), a ≤ r ≤ 8a | 0.5 % |
+| a = 10⁻⁸ vs off | identical to 4·10⁻⁷ |
+| Pinched witness, box to ξ = 12, a = 0.005: axis cells 10⁻³, 2.5·10⁻⁴ (Δξ = 0.00125), 5·10⁻⁴ (Δξ = 0.005) | peak E_z −8.8, −8.8, −8.4 (cold: −20 … −77); vs cold: behind the bubble 0.2–0.7 %, witness 1–2.5·10⁻⁴ |
+| 2 MPI ranks vs serial with smoothing | bit-identical |
+| Hosing (`modes = 1`), LWFA with laser, a = 0.005 | run; hosing centroid changed far less than by halving the cells |
 
 **MPI vs serial** (`validation/cmp_runs.py` compares every output file; serial runs with
 `beams.xi_shape = ngp`, one OpenMP thread per rank, 2 cores; P = 3, 4 oversubscribed):

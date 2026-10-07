@@ -35,6 +35,16 @@ public:
     // f / r, with the axis value f_1 / r_1 (for functions vanishing linearly on the axis)
     void over_r(const View1D& f, const View1D& out) const;
 
+    // Radial smoothing filter  f <- (1 - div a^2 grad)^{-1} f  for angular number n = 0, 1, 2
+    // (the scalar filter applied to each Cartesian component / azimuthal mode). a2mid: a^2 at the
+    // cell mid points (N values). n = 0: lumped FEM with a zero-flux wall (conserves sum V_j f_j and
+    // constants); n >= 1: finite volume, the axis and wall values are passed through unchanged
+    // (the wall value of S enters the flux condition of B_theta). Green's function in 2D
+    // for constant a: K_0(r/a) / (2 pi a^2).
+    void set_filter(const std::vector<Real>& a2mid);
+    bool filter_on() const { return filter_on_; }
+    void filter(int n, const View1D& f) const;
+
     const RadialGrid& grid() const { return grid_; }
     // tridiagonal coefficients of the m = 0 operator L0 (rows 0..N-1; row N is the Dirichlet row 0 1 0)
     void l0_coefficients(View1D& a, View1D& b, View1D& c) const { a = L0_.a; b = L0_.b; c = L0_.c; }
@@ -46,6 +56,9 @@ private:
     const RadialGrid& grid_;
     TridiagSolver tri_;
     Op L0_, L1D_, L1F_, L2D_;
+    Op F_[3];                     // smoothing filter operators, n = 0, 1, 2
+    bool filter_on_ = false;
+    View1D fw_;                   // filter work array
     Real flux_coef_ = 0;          // coefficient of g in the last row of L1F
     View1D bw_, dw_;              // work arrays
     View1D gc_m_, gc_0_, gc_p_;   // gradient stencils

@@ -67,7 +67,8 @@ public:
     // slice-level kernels (public: they contain device lambdas, CUDA restriction)
     void zero_sources();
     void combine_sources(int kl, Real ds = 0);   // ds > 0: sub-slice at xi_k + ds (beam rho - J_z extrapolated)
-    void solve_slice_fields();                  // psi, E_z, W+, B_z, S, B+ from the sources in src_
+    void solve_slice_fields();
+    void filter_plasma_sources();               // radial smoothing of the plasma deposit (plasma.smooth_length)                  // psi, E_z, W+, B_z, S, B+ from the sources in src_
     int  subslices(Real dxi) const;             // adaptive sub-slicing: number of sub-slices for the next step
     void compute_wplus();
     void compute_bz();
@@ -86,7 +87,8 @@ private:
     Comm& comm_;
     bool m1_ = false;
     int picard_ = 1;
-    bool field_files_ = true;   // output.field_files: write fields_*.bin (axis_*.txt always)
+    bool field_files_ = true;
+    Real smooth_a_ = 0;   // plasma.smooth_length   // output.field_files: write fields_*.bin (axis_*.txt always)
     Real max_cells_ = 0;     // pusher.max_cells_per_step (0: no sub-slicing)
     int  substep_max_ = 64;  // pusher.substep_max
     double nsub_step_ = 0;   // extra sub-slices in this time step (diagnostic)
