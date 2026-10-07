@@ -1,9 +1,11 @@
-"""Section 14: radial smoothing of the plasma sources (plasma.smooth_length) regularizes the axis
-caustic at the bubble back. usage: smoothing_check.py cold_ref smoothed_run...
-Prints for each run the E_z minimum and the axis density maximum in the closure region (xi 8.5..9.6),
-and the r.m.s. change of E_z(0), psi(0) behind the bubble (9.2..11.9) and around the witness
-(6.4..7.2) relative to the cold, unsmoothed reference. Then the spread of the E_z minimum over the
-smoothed runs (different axis cells / xi steps: should be small, the spike is now resolved)."""
+"""Section 14: regularization of the bubble-back singularity (plasma.smooth_length).
+The criterion is the convergence of the fields AFTER the closure spike: the spike itself (the
+axis caustic of a cold plasma) is unphysical, its height need not converge.
+usage: smoothing_check.py ref_dir run_dir...
+For each run: r.m.s. change of E_z(0) and psi(0) relative to ref_dir behind the bubble
+(xi 9.2..11.9) and around the witness (6.4..7.2); the E_z minimum and axis density maximum in the
+closure region (8.5..9.6) are printed for information only."""
+import re
 import sys
 
 import numpy as np
@@ -20,15 +22,17 @@ def l2(x0, f0, x1, f1, a, b):
     return np.sqrt(np.mean((r1 - r0) ** 2) / np.mean(r0 ** 2))
 
 
+def label(d):
+    return re.sub(r"^out_sm_", "", d)
+
+
 xr, er, pr, nr = load(sys.argv[1])
 m = (xr > 8.5) & (xr < 9.6)
-print("  %-16s closure: min Ez %7.1f  max ne(0) %9.0f   (cold, not smoothed)" % (sys.argv[1], er[m].min(), nr[m].max()))
-mins = []
+print("  reference %-14s                                        (closure: min Ez %6.1f, max ne(0) %8.0f)"
+      % (label(sys.argv[1]), er[m].min(), nr[m].max()))
 for d in sys.argv[2:]:
     x, e, p, n = load(d)
     m = (x > 8.5) & (x < 9.6)
-    mins.append(e[m].min())
-    print("  %-16s closure: min Ez %7.1f  max ne(0) %9.0f | vs cold: behind Ez %.1e psi %.1e, witness Ez %.1e psi %.1e"
-          % (d, e[m].min(), n[m].max(), l2(xr, er, x, e, 9.2, 11.9), l2(xr, pr, x, p, 9.2, 11.9),
-             l2(xr, er, x, e, 6.4, 7.2), l2(xr, pr, x, p, 6.4, 7.2)))
-print("  smoothed runs: min Ez %.2f +- %.2f (spread over axis cells and xi steps)" % (np.mean(mins), np.std(mins)))
+    print("  %-22s behind: Ez %.1e psi %.1e | witness: Ez %.1e psi %.1e  (closure: min Ez %6.1f, max ne(0) %8.0f)"
+          % (label(d), l2(xr, er, x, e, 9.2, 11.9), l2(xr, pr, x, p, 9.2, 11.9),
+             l2(xr, er, x, e, 6.4, 7.2), l2(xr, pr, x, p, 6.4, 7.2), e[m].min(), n[m].max()))

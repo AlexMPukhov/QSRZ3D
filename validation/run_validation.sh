@@ -219,16 +219,26 @@ sec13() {
 }
 
 sec14() {
-    echo "== 14. radial smoothing of the plasma sources (plasma.smooth_length = 0.005) =="
-    # paper case (pinched witness, mobile ions), box to xi = 12: cold axis caustic at the bubble back
+    echo "== 14. regularization of the bubble back: radial smoothing of the plasma sources =="
+    # paper case (pinched witness, mobile ions, axis cell 5e-4), box to xi = 12. Criterion: the fields
+    # AFTER the closure spike converge in dxi and in the axis cell (the spike height need not).
     local P="../paper/inputs/conv_s1.in xi.max=12 output.field_files=0" S="plasma.smooth_length=0.005"
-    local DX=$(q 0.00125 0.0025)
-    $QS $P xi.step=$(q 0.000625 0.00125) output.dir=out_sm_cold > /dev/null
-    $QS $P $S xi.step=$DX "grid.regions=0.05:0.001 2.5:0.01 8.0:0.05" output.dir=out_sm_h1e-3 > /dev/null
-    $QS $P $S xi.step=$DX "grid.regions=0.05:0.00025 2.5:0.01 8.0:0.05" output.dir=out_sm_h2.5e-4 > /dev/null
-    $QS $P $S xi.step=0.005 output.dir=out_sm_dxi5e-3 > /dev/null
-    echo " cold reference vs smoothed runs (axis cells 1e-3, 2.5e-4 at dxi = $DX; 5e-4 at dxi = 0.005):"
-    python3 smoothing_check.py out_sm_cold out_sm_h1e-3 out_sm_h2.5e-4 out_sm_dxi5e-3
+    local XR=$(q 0.000625 0.00125) G="2.5:0.01 8.0:0.05" d
+    $QS $P xi.step=$XR output.dir=out_sm_cold_ref > /dev/null
+    $QS $P $S xi.step=$XR output.dir=out_sm_a5e-3_ref > /dev/null
+    for d in 0.005 0.0025 $(q 0.00125 ""); do
+        $QS $P xi.step=$d output.dir=out_sm_cold_dxi$d > /dev/null
+        $QS $P $S xi.step=$d output.dir=out_sm_a5e-3_dxi$d > /dev/null
+    done
+    for h in 0.001 0.00025; do
+        $QS $P $S xi.step=$(q 0.0025 0.005) "grid.regions=0.05:$h $G" output.dir=out_sm_a5e-3_h0=$h > /dev/null
+    done
+    echo " cold plasma, xi step vs reference dxi = $XR:"
+    python3 smoothing_check.py out_sm_cold_ref out_sm_cold_dxi*
+    echo " a = 0.005, xi step and axis cell h0 vs reference dxi = $XR, h0 = 5e-4:"
+    python3 smoothing_check.py out_sm_a5e-3_ref out_sm_a5e-3_dxi* out_sm_a5e-3_h0=*
+    echo " model difference a = 0.005 vs cold (both references; O(a)):"
+    python3 smoothing_check.py out_sm_cold_ref out_sm_a5e-3_ref
     if [ -n "$MPIRUN" ]; then
         local M="$P $S xi.step=0.01 beams.xi_shape=ngp xi.max=$(q 12 10)"
         OMP_NUM_THREADS=1 $QS $M output.dir=out_sm_s > /dev/null

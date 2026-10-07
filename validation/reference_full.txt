@@ -90,13 +90,22 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2, 4], max rel diff 0.00e+00
   axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
   beamlog  max rel diff 0.00e+00  (beams.txt col 1)
   dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)
-== 14. radial smoothing of the plasma sources (plasma.smooth_length = 0.005) ==
- cold reference vs smoothed runs (axis cells 1e-3, 2.5e-4 at dxi = 0.00125; 5e-4 at dxi = 0.005):
-  out_sm_cold      closure: min Ez   -77.5  max ne(0)    892195   (cold, not smoothed)
-  out_sm_h1e-3     closure: min Ez    -8.8  max ne(0)     12317 | vs cold: behind Ez 4.2e-03 psi 6.0e-03, witness Ez 1.0e-04 psi 6.5e-05
-  out_sm_h2.5e-4   closure: min Ez    -8.8  max ne(0)     13966 | vs cold: behind Ez 3.8e-03 psi 1.8e-03, witness Ez 2.5e-04 psi 8.0e-05
-  out_sm_dxi5e-3   closure: min Ez    -8.4  max ne(0)      6843 | vs cold: behind Ez 4.4e-03 psi 6.9e-03, witness Ez 2.1e-04 psi 7.9e-05
-  smoothed runs: min Ez -8.64 +- 0.20 (spread over axis cells and xi steps)
+== 14. regularization of the bubble back: radial smoothing of the plasma sources ==
+ cold plasma, xi step vs reference dxi = 0.000625:
+  reference cold_ref                                              (closure: min Ez  -77.5, max ne(0)   892195)
+  cold_dxi0.00125        behind: Ez 1.9e-03 psi 1.3e-03 | witness: Ez 5.0e-06 psi 7.2e-08  (closure: min Ez  -20.4, max ne(0)  1400636)
+  cold_dxi0.0025         behind: Ez 3.6e-03 psi 2.1e-03 | witness: Ez 7.6e-06 psi 3.2e-07  (closure: min Ez  -12.8, max ne(0)   550732)
+  cold_dxi0.005          behind: Ez 4.2e-03 psi 3.0e-03 | witness: Ez 1.1e-05 psi 1.7e-06  (closure: min Ez  -14.8, max ne(0)    75345)
+ a = 0.005, xi step and axis cell h0 vs reference dxi = 0.000625, h0 = 5e-4:
+  reference a5e-3_ref                                             (closure: min Ez   -8.8, max ne(0)    17857)
+  a5e-3_dxi0.00125       behind: Ez 5.3e-04 psi 7.7e-05 | witness: Ez 3.3e-06 psi 2.5e-08  (closure: min Ez   -8.8, max ne(0)    17389)
+  a5e-3_dxi0.0025        behind: Ez 7.7e-04 psi 1.2e-04 | witness: Ez 5.9e-06 psi 4.2e-08  (closure: min Ez   -8.3, max ne(0)    17513)
+  a5e-3_dxi0.005         behind: Ez 1.8e-03 psi 1.0e-03 | witness: Ez 1.1e-05 psi 1.3e-06  (closure: min Ez   -8.4, max ne(0)     6843)
+  a5e-3_h0=0.00025       behind: Ez 3.7e-03 psi 4.8e-03 | witness: Ez 7.9e-05 psi 3.2e-06  (closure: min Ez   -8.4, max ne(0)    15110)
+  a5e-3_h0=0.001         behind: Ez 8.6e-04 psi 3.8e-04 | witness: Ez 2.4e-04 psi 1.7e-05  (closure: min Ez   -8.2, max ne(0)    14473)
+ model difference a = 0.005 vs cold (both references; O(a)):
+  reference cold_ref                                              (closure: min Ez  -77.5, max ne(0)   892195)
+  a5e-3_ref              behind: Ez 4.3e-03 psi 6.4e-03 | witness: Ez 2.1e-04 psi 7.7e-05  (closure: min Ez   -8.8, max ne(0)    17857)
  with smoothing, 2 MPI ranks vs serial (expected: bit-identical, 0):
   axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
   beamlog  max rel diff 0.00e+00  (beams.txt col 1)

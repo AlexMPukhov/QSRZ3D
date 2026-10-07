@@ -99,8 +99,10 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - regularization of the bubble-back singularity: `plasma.smooth_length` = a, radial filter
   (1 - a^2 Lap)^-1 on all plasma sources + background (FieldSolver::filter, per angular number,
   n = 0 zero-flux wall, n >= 1 axis/wall rows pass-through: the wall value of S enters the B_theta
-  flux condition — forcing it to 0 was a bug). Spike converged (a = 0.005: peak Ez -8.8 on all
-  grids, dxi <= a); changes vs cold O(a): 0.4-0.8 % behind the bubble, 2e-4 at the witness.
+  flux condition — forcing it to 0 was a bug). Criterion (Alexander): the fields AFTER the spike
+  must converge, the spike height need not. a = 0.005: wake behind converges cleanly (Ez 0.18 ->
+  0.05 % for dxi 0.005 -> 0.00125; cold 0.42 -> 0.19 %, noisy); changes vs cold O(a): ~0.5 %
+  behind the bubble, 2e-4 at the witness.
   Temperature alone (uth) is not a reliable regularizer (seed dependent). Section 14, test_filter.
   Agreed with Alexander 2026-10-07 (the spike is unphysical: cold plasma, perfect cylinder).
 - `paper/tex/` (LaTeX source, figures, PDF of the PRAB draft), `paper/scripts/` (figure and

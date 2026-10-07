@@ -150,9 +150,20 @@ plasma is unchanged). The filter is linear and the same in every slice, so E_z s
 ξ-derivative of ψ, and MPI runs stay bit-identical to serial runs. The beams are not filtered.
 The fields acting on the particles are not filtered either.
 
-With a fixed, the spike becomes a resolved, converged quantity: for the pinched-witness case,
-peak E_z −8.8 (a = 0.005) on axis cells from 10⁻³ to 2.5·10⁻⁴ and for all Δξ ≤ a, with a bounded
-axis density. The rest of the solution changes in proportion to a (relative to the cold solution):
+What matters is the wake **after** the spike, not the spike itself. In the pinched-witness case
+(section 14), the r.m.s. error of E_z(0) behind the bubble relative to Δξ = 6.25·10⁻⁴:
+
+| Δξ | cold | a = 0.005 |
+|---|---|---|
+| 0.005 | 0.42 % (ψ 0.30 %) | 0.18 % (ψ 0.10 %) |
+| 0.0025 | 0.36 % (ψ 0.21 %) | 0.08 % (ψ 0.012 %) |
+| 0.00125 | 0.19 % (ψ 0.13 %) | 0.05 % (ψ 0.008 %) |
+
+The cold wake converges slowly, because the spike leaves noise behind it; the smoothed wake
+converges cleanly, and changes by 0.1–0.5 % between axis cells 10⁻³ and 2.5·10⁻⁴. The spike
+itself becomes finite and bounded (peak E_z ≈ −8.5 for a = 0.005 on all these grids, axis density
+~10⁴ instead of ~10⁶); its height is not a meaningful quantity either way. The smoothed solution
+differs from the cold one in proportion to a:
 
 | a | peak E_z at the closure | wake behind the bubble (E_z, ψ) | around the witness (E_z) |
 |---|---|---|---|
@@ -162,7 +173,7 @@ axis density. The rest of the solution changes in proportion to a (relative to t
 | 0.01 | −6.8 | 0.7–0.9 % | 6·10⁻⁴ |
 | 0.02 | −5.0 | 2–4 % | 1.6·10⁻³ |
 
-Recommended: a ≈ 0.005 (in k_p⁻¹), the axis cell ≤ a and Δξ ≤ a. A finite temperature
+Recommended: a ≈ 0.005 (in k_p⁻¹), with the axis cell and Δξ not larger than a. A finite temperature
 (`electrons.uth`) also bounds the spike, but its height then depends on the few particles that
 pass closest to the axis (with uth = 0.01, peak E_z −41 or −5 for different seeds), so it is not a
 reliable regularization by itself.
@@ -882,7 +893,9 @@ and analytic beam densities.
 | Unit: n = 0 total charge, constants | conserved to 10⁻¹⁵, preserved to 10⁻¹⁴ |
 | Unit: point charge on the axis vs K₀(r/a)/(2πa²), a ≤ r ≤ 8a | 0.5 % |
 | a = 10⁻⁸ vs off | identical to 4·10⁻⁷ |
-| Pinched witness, box to ξ = 12, a = 0.005: axis cells 10⁻³, 2.5·10⁻⁴ (Δξ = 0.00125), 5·10⁻⁴ (Δξ = 0.005) | peak E_z −8.8, −8.8, −8.4 (cold: −20 … −77); vs cold: behind the bubble 0.2–0.7 %, witness 1–2.5·10⁻⁴ |
+| Pinched witness, box to ξ = 12: wake behind the spike (9.2 < ξ < 11.9) vs Δξ = 6.25·10⁻⁴ at Δξ = 0.005 / 0.0025 / 0.00125 | cold: E_z 0.42 / 0.36 / 0.19 %; a = 0.005: 0.18 / 0.08 / 0.05 % (ψ 0.10 / 0.012 / 0.008 %) |
+| Same, a = 0.005, axis cell 10⁻³ and 2.5·10⁻⁴ vs 5·10⁻⁴ (Δξ = 0.0025) | E_z 0.09 %, 0.37 %; ψ 0.04 %, 0.48 %; spike finite (peak E_z −8.2 … −8.8) |
+| Model difference a = 0.005 vs cold | behind the bubble E_z 0.43 %, ψ 0.64 %; witness E_z 2·10⁻⁴ |
 | 2 MPI ranks vs serial with smoothing | bit-identical |
 | Hosing (`modes = 1`), LWFA with laser, a = 0.005 | run; hosing centroid changed far less than by halving the cells |
 
