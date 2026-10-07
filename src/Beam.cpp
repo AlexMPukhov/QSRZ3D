@@ -765,8 +765,24 @@ std::vector<double> Beam::packed(const Kokkos::View<int*, HostSpace>* sel) const
     return out;
 }
 
-void Beam::dump(const std::string& filename) const {
-    const std::vector<double> p = packed();
+std::vector<double> Beam::packed_all() const {
+    View1D v[7] = {x_, y_, px_, py_, pz_, xi_, w_};
+    std::vector<double> out(7 * static_cast<size_t>(Np_));
+    for (int c = 0; c < 7; ++c) {
+        auto h = Kokkos::create_mirror_view_and_copy(HostSpace(), v[c]);
+        for (int i = 0; i < Np_; ++i) out[7 * static_cast<size_t>(i) + c] = h(i);
+    }
+    return out;
+}
+
+void Beam::dump(const std::string& filename, int stride) const {
+    std::vector<double> p = packed();
+    if (stride > 1) {
+        std::vector<double> q;
+        for (size_t i = 0; i < p.size() / 7; i += static_cast<size_t>(stride))
+            q.insert(q.end(), p.begin() + 7 * i, p.begin() + 7 * i + 7);
+        p.swap(q);
+    }
     std::ofstream out(filename, std::ios::binary);
     const int32_t n = static_cast<int32_t>(p.size() / 7);
     out.write(reinterpret_cast<const char*>(&n), sizeof(n));

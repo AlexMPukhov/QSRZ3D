@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..14 (default: all)
+#   sections   numbers 1..15 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 14)}
+SECTIONS=${*:-$(seq 1 15)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -247,6 +247,66 @@ sec14() {
         python3 cmp_runs.py out_sm_s out_sm_p2 0 || true
     fi
     rm -rf out_sm_*
+}
+
+sec15() {
+    echo "== 15. checkpoints / restart and diagnostic groups =="
+    # restart: uninterrupted run A (checkpoint every 2 steps) vs run B restarted from step 2;
+    # one OpenMP thread (with more, the atomic deposits are not bit-reproducible anyway)
+    local E="../paper/inputs/evo_s1.in time.steps=$(q 6 4) output.every=1 output.beam_every=1 beams.xi_shape=ngp xi.step=$(q 0.005 0.01)"
+    local C="checkpoint.every=2 checkpoint.keep=0" R="restart.from=out_rs_A/checkpoints/chk_000002"
+    local L="../examples/lwfa_laser.in time.steps=$(q 4 2) output.every=1 output.beam_every=1 beams.xi_shape=ngp"
+    local O="../paper/inputs/evo_s1.in time.steps=2 output.every=2 output.beam_every=2 beams.xi_shape=ngp xi.step=$(q 0.005 0.01)"
+    export OMP_NUM_THREADS=1
+    $QS $E $C output.dir=out_rs_A > /dev/null
+    $QS $E $R output.dir=out_rs_B > /dev/null
+    echo " particle witness, mobile ions, serial restart (expected: bit-identical):"
+    python3 restart_check.py out_rs_A out_rs_B 0 || true
+    $QS $L checkpoint.every=1 checkpoint.keep=0 output.dir=out_rs_LA > /dev/null
+    $QS $L restart.from=out_rs_LA/checkpoints/chk_000001 output.dir=out_rs_LB > /dev/null
+    echo " laser envelope + witness, serial restart (expected: bit-identical):"
+    python3 restart_check.py out_rs_LA out_rs_LB 0 || true
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 2 $QS $E $C output.dir=out_rs_P2A > /dev/null
+        $MPIRUN 2 $QS $E restart.from=out_rs_P2A/checkpoints/chk_000002 output.dir=out_rs_P2B > /dev/null
+        echo " 2 ranks, restart with 2 ranks (expected: bit-identical):"
+        python3 restart_check.py out_rs_P2A out_rs_P2B 0 || true
+        $MPIRUN 3 $QS $E restart.from=out_rs_P2A/checkpoints/chk_000002 output.dir=out_rs_P3B > /dev/null
+        echo " 2 ranks, restart with 3 ranks (particles redistributed; expected: <= round-off):"
+        python3 restart_check.py out_rs_P2A out_rs_P3B 1e-10 || true
+        $MPIRUN 2 $QS $L checkpoint.every=1 checkpoint.keep=0 output.dir=out_rs_L2A > /dev/null
+        $MPIRUN 3 $QS $L restart.from=out_rs_L2A/checkpoints/chk_000001 output.dir=out_rs_L3B > /dev/null
+        echo " laser, 2 ranks, restart with 3 ranks (envelope slices redistributed; expected: <= round-off):"
+        python3 restart_check.py out_rs_L2A out_rs_L3B 1e-10 || true
+    fi
+    # restart into the same directory: the logs are truncated at the restart step and continued
+    cp -r out_rs_A out_rs_C
+    $QS $E restart.from=out_rs_C/checkpoints/chk_000002 output.dir=out_rs_C > /dev/null
+    if diff -q out_rs_A/beams.txt out_rs_C/beams.txt > /dev/null; then
+        echo " same-directory restart: beams.txt identical to the uninterrupted run  OK"
+    else echo " same-directory restart: beams.txt differs  FAIL"; fi
+    # pruning: keep = 2 leaves the two newest complete checkpoints
+    $QS $E checkpoint.every=1 checkpoint.keep=2 output.every=0 output.beam_every=0 output.dir=out_rs_K > /dev/null
+    echo " checkpoint.keep = 2, every step: kept $(ls out_rs_K/checkpoints | tr '\n' ' ')(expected: the two newest)"
+    # diagnostic groups: exact subsets of the main output
+    $QS $O diag.names=light diag.light.every=2 "diag.light.fields=ez psi ne" diag.light.rmax=1.0 diag.light.xi_stride=3 \
+        diag.light.beams=witness diag.light.particle_stride=7 output.dir=out_grp > /dev/null
+    echo " diagnostic group (ez psi ne, r <= 1, every 3rd slice, witness every 7th particle), serial:"
+    python3 group_check.py out_grp out_grp/light ez,psi,ne 1.0 3 7 witness || true
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 3 $QS $O diag.names=light diag.light.every=2 "diag.light.fields=ez bth" diag.light.rmax=0.5 \
+            diag.light.xi_stride=4 diag.light.beams=none output.dir=out_grp3 > /dev/null
+        echo " diagnostic group (ez bth, r <= 0.5, every 4th slice), 3 ranks:"
+        python3 group_check.py out_grp3 out_grp3/light ez,bth 0.5 4 1 none || true
+    fi
+    if $QS ../paper/inputs/evo_s1.in time.steps=0 output.every=1 diag.names=pmd diag.pmd.every=1 diag.pmd.format=openpmd \
+         diag.pmd.openpmd_backend=json "diag.pmd.fields=ez psi" diag.pmd.beams=witness diag.pmd.particle_stride=5 \
+         diag.pmd.xi_stride=2 diag.pmd.rmax=0.5 output.dir=out_grpo > /dev/null 2>&1; then
+        echo " openPMD group (E_z, psi, witness every 5th particle, every 2nd slice):"
+        python3 group_openpmd_check.py out_grpo/pmd/openpmd/data_000000.json 0 E.z,psi witness 901 40000 || true
+    fi
+    unset OMP_NUM_THREADS
+    rm -rf out_rs_* out_grp*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

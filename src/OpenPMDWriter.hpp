@@ -37,13 +37,18 @@ struct BeamGrid;
 
 class OpenPMDWriter {
 public:
+    // prefix: key prefix of the output group ("output." or "diag.<name>."); the openpmd_* keys
+    // fall back to output.openpmd_*, and <prefix>rmax limits the uniform grid
     OpenPMDWriter(const Config& cfg, const std::string& outdir, const RadialGrid& grid, const BeamGrid& box, bool mode1,
-                  double dt);
+                  double dt, const std::string& prefix = "output.");
     ~OpenPMDWriter();
     static bool available();   // compiled with openPMD-api
 
     // collective over all ranks; every rank passes its local slices and particles
-    void write(int step, double t, const FieldTable* fields, const std::vector<std::unique_ptr<Beam>>& beams);
+    // fields: only the components present in the table are written; every xi_stride-th slice;
+    // every particle_stride-th particle of the given beams
+    void write(int step, double t, const FieldTable* fields, const std::vector<const Beam*>& beams, int xi_stride = 1,
+               int particle_stride = 1);
     void close();
     std::string description() const;
 

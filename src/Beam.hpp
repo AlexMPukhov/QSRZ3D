@@ -54,12 +54,17 @@ public:
     std::vector<double> slice_sums(double lo, double hi, int nbins) const;
     static void write_slices_file(const std::string& filename, Real t, Real q, double lo, double hi, int nbins,
                                   const std::vector<double>& sums);
-    void dump(const std::string& filename) const;
+    void dump(const std::string& filename, int stride = 1) const;   // every stride-th live particle
     Real charge() const { return q_; }
     Real mass() const { return m_; }
 
     // decomposition along xi: ownership by nearest slice, migration to the downstream rank
     std::vector<double> packed(const Kokkos::View<int*, HostSpace>* sel = nullptr) const;
+    // checkpoints: all particles in memory order, including removed ones (w = 0), so that a
+    // restarted run is bit-identical; the leapfrog start flag
+    std::vector<double> packed_all() const;
+    bool started() const { return started_; }
+    void set_started(bool s) { started_ = s; }
     void set_particles(const std::vector<double>& p);
     void restrict_to_local();
     std::vector<double> extract_outgoing();

@@ -53,6 +53,7 @@ add_library(quarz_core
   src/PlasmaSpecies.cpp
   src/Beam.cpp
   src/Simulation.cpp
+  src/SimulationIO.cpp
   src/Parallel.cpp
   src/OpenPMDWriter.cpp
   src/Laser.cpp

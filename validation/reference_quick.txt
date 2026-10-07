@@ -99,3 +99,22 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2], max rel diff 0.00e+00
   axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
   beamlog  max rel diff 0.00e+00  (beams.txt col 1)
   dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)
+== 15. checkpoints / restart and diagnostic groups ==
+ particle witness, mobile ions, serial restart (expected: bit-identical):
+  13 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ laser envelope + witness, serial restart (expected: bit-identical):
+  8 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ 2 ranks, restart with 2 ranks (expected: bit-identical):
+  13 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ 2 ranks, restart with 3 ranks (particles redistributed; expected: <= round-off):
+  13 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ laser, 2 ranks, restart with 3 ranks (envelope slices redistributed; expected: <= round-off):
+  8 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ same-directory restart: beams.txt identical to the uninterrupted run  OK
+ checkpoint.keep = 2, every step: kept chk_000004 chk_000005 (expected: the two newest)
+ diagnostic group (ez psi ne, r <= 1, every 3rd slice, witness every 7th particle), serial:
+  group 'light': 2 field files, 2 beam files = exact subsets of the main output; size 6.9 % of the corresponding main files  OK
+ diagnostic group (ez bth, r <= 0.5, every 4th slice), 3 ranks:
+  group 'light': 2 field files, 0 beam files = exact subsets of the main output; size 1.8 % of the corresponding main files  OK
+ openPMD group (E_z, psi, witness every 5th particle, every 2nd slice):
+  openPMD group: meshes ['E.z', 'psi'], species ['witness'], 901 slices, 40000 particles  OK

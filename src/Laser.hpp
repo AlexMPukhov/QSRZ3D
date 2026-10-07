@@ -68,6 +68,9 @@ public:
     const View3D& ponderomotive() const { return pond_; }
     // (local slice, node, 2): Re, Im of the current envelope
     const View3D& envelope() const { return a_; }
+    // checkpoints: the envelope at the start of the next step (a^n+1 once the sweep is done)
+    const View3D& current() const { return advanced_ ? an_ : a_; }
+    void restore(const View3D& a) { Kokkos::deep_copy(a_, a); advanced_ = false; }
 
     // per-rank sums for diagnostics: {sum |a|^2 dV, sum |a|^2 xi dV, sum |a|^2 r^2 dV, max |a|, sum |a|^2 xi^2 dV}
     std::array<double, 5> sums() const;

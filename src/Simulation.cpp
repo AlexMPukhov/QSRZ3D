@@ -58,7 +58,6 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     nsteps_ = cfg.get_int("time.steps", 0);
     t_ = cfg.get_double("time.start", 0.0);
     out_every_ = cfg.get_int("output.every", 1);
-    beam_dump_every_ = cfg.get_int("output.beam_every", 0);
     slice_bins_ = cfg.get_int("output.beam_slices", 0);
     {
         const auto rg = cfg.get_list("output.beam_slices_range");
@@ -157,9 +156,28 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
         grid_->write(outdir_ + "/grid.txt");
     }
     comm_.barrier();   // output directory exists
-    if (P == 1) beamlog_.open(outdir_ + "/beams.txt");
+    // ---- restart: the checkpoint gives the first step; the logs keep their lines of earlier steps
+    {
+        const std::string rs = cfg.get_string("restart.from", "");
+        chk_dir_ = cfg.get_string("checkpoint.dir", outdir_ + "/checkpoints");
+        if (!rs.empty()) {
+            restart_path_ = resolve_restart(rs);
+            restarted_ = true;
+            std::ifstream meta(restart_path_ + "/checkpoint.txt");
+            std::string key;
+            while (meta >> key)
+                if (key == "step") meta >> start_step_;
+            if (comm_.root()) truncate_logs(start_step_);
+            comm_.barrier();
+        }
+    }
+    const auto log_mode = restarted_ ? std::ios::app : std::ios::trunc;
+    // a header is written unless the run continues an existing log (restart into the same directory)
+    auto fresh = [&](const std::string& f) { return !restarted_ || !std::filesystem::exists(outdir_ + "/" + f); };
+    const bool fresh_beams = fresh("beams.txt"), fresh_laser = fresh("laser.txt"), fresh_ion = fresh("ionization.txt");
+    if (P == 1) beamlog_.open(outdir_ + "/beams.txt", std::ios::out | log_mode);
     else beamlog_.open(outdir_ + "/beams.part" + std::to_string(r));
-    if (P == 1)
+    if (P == 1 && fresh_beams)
         beamlog_ << "# beam step t alive npart charge gamma_mean gamma_rms xi_mean xi_rms r_rms emit_nx"
                     " x_mean y_mean emit_ny sigma_x sigma_y\n";
 
@@ -168,13 +186,15 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
         laser_ = std::make_unique<Laser>(cfg, *grid_, *solver_, box_, t_, dt_);
         fld_.laser = true;
         if (comm_.root()) std::cout << laser_->description() << "\n";
-        laserlog_.open(P == 1 ? outdir_ + "/laser.txt" : outdir_ + "/laser.part" + std::to_string(r));
-        if (P == 1) laserlog_ << "# step t a_max w_rms xi_centroid L_rms energy (int |a|^2 dV)\n";
+        if (P == 1) laserlog_.open(outdir_ + "/laser.txt", std::ios::out | log_mode);
+        else laserlog_.open(outdir_ + "/laser.part" + std::to_string(r));
+        if (P == 1 && fresh_laser) laserlog_ << "# step t a_max w_rms xi_centroid L_rms energy (int |a|^2 dV)\n";
         for (int i : ion_sp_) species_[i]->set_laser(laser_->k0(), laser_->circular());
     }
     if (!ion_sp_.empty()) {
-        ionlog_.open(P == 1 ? outdir_ + "/ionization.txt" : outdir_ + "/ionization.part" + std::to_string(r));
-        if (P == 1) {
+        if (P == 1) ionlog_.open(outdir_ + "/ionization.txt", std::ios::out | log_mode);
+        else ionlog_.open(outdir_ + "/ionization.part" + std::to_string(r));
+        if (P == 1 && fresh_ion) {
             ionlog_ << "# step t";
             for (int i : ion_sp_) {
                 const std::string& nm = species_[i]->name();
@@ -184,20 +204,9 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
         }
     }
 
-    // ---- output format: native binary/text files, openPMD, or both
-    const std::string fmt = cfg.get_string("output.format", "native");
-    if (fmt != "native" && fmt != "openpmd" && fmt != "both")
-        throw std::runtime_error("output.format must be native, openpmd or both");
-    out_native_ = (fmt != "openpmd");
-    field_files_ = cfg.get_bool("output.field_files", true);
-    if (fmt != "native") {
-        opmd_ = std::make_unique<OpenPMDWriter>(cfg, outdir_, *grid_, box_, m1_, dt_);
-        if (comm_.root()) {
-            std::cout << opmd_->description() << "\n";
-            if (P > 1)
-                std::cout << "  note: openPMD writes are collective; each output step drains the xi pipeline\n";
-        }
-    }
+    // ---- output groups (main output and diag.names), checkpoints, restart
+    setup_output();
+    if (restarted_) read_checkpoint(restart_path_);
 }
 
 Simulation::~Simulation() = default;
@@ -635,7 +644,7 @@ std::vector<double> Simulation::make_message(int n) {
 //   int32 ncomp, then ncomp x { char name[16], float64 data[K][M] }
 // mode 0: psi ez er eth br bth bz ne ni rhob
 // mode 1 (if present): <name>_c, <name>_s  (cos and sin amplitudes: f = f0 + f_c cos + f_s sin)
-std::shared_ptr<const FieldTable> Simulation::field_table() const {
+std::shared_ptr<const FieldTable> Simulation::field_table(const OutputGroup* g) const {
     auto T = std::make_shared<FieldTable>();
     T->KL = box_.nloc;
     T->M = grid_->N + 1;
@@ -644,7 +653,9 @@ std::shared_ptr<const FieldTable> Simulation::field_table() const {
     T->D = Kokkos::create_mirror_view_and_copy(HostSpace(), diag);
     T->B = Kokkos::create_mirror_view_and_copy(HostSpace(), bsrc);
     const FieldTable* t = T.get();   // the lambdas below are owned by *t
-    auto add = [&](const std::string& name, std::function<double(int, int)> fun) { T->comps.emplace_back(name, fun); };
+    auto add = [&](const std::string& name, std::function<double(int, int)> fun) {
+        if (!g || g->wants(name)) T->comps.emplace_back(name, fun);
+    };
     // W+ = E+ + i B+ ;  polar m=0: V_r0 = Re v1, V_th0 = Im v1
     add("psi", [t](int k, int j) { return t->D(k, j, D_PSI0); });
     add("ez", [t](int k, int j) { return t->F(k, j, F_EZ0); });
@@ -692,7 +703,7 @@ std::shared_ptr<const FieldTable> Simulation::field_table() const {
             add("nz_" + species_[ion_sp_[s]]->name() + "_s", [](int, int) { return 0.0; });
         }
     }
-    if (laser_) {   // laser envelope a^ (m = 0 only)
+    if (laser_ && (!g || g->wants("a_re"))) {   // laser envelope a^ (m = 0 only)
         const auto& env = laser_->envelope();
         T->L = Kokkos::create_mirror_view_and_copy(HostSpace(), env);
         add("a_re", [t](int k, int j) { return t->L(k, j, 0); });
@@ -703,12 +714,20 @@ std::shared_ptr<const FieldTable> Simulation::field_table() const {
     return T;
 }
 
-void Simulation::write_fields(const std::string& fn) const {
-    const int M = grid_->N + 1, K = box_.nxi;
-    const auto T = field_table();
+void Simulation::write_fields(const std::string& fn, const OutputGroup* g) const {
+    // written: radial nodes 0..M-1 (r <= rmax of the group), slices k = 0, s, 2s, ... (s = xi_stride)
+    const int M = g ? g->Mout : grid_->N + 1;
+    const int s = g ? g->xi_stride : 1;
+    const int K = (box_.nxi - 1) / s + 1;
+    const auto T = field_table(g);
     const auto& out = T->comps;
-    // layout: header | ncomp x { name[16], data[K][M] };  every rank writes its rows k0..k0+nloc-1
-    const int k0 = box_.k0, KL = box_.nloc;
+    // layout: header | ncomp x { name[16], data[K][M] };  every rank writes its own rows
+    const int KL0 = box_.nloc, k00 = box_.k0;
+    std::vector<int> rows;   // local slices that are written
+    for (int kl = 0; kl < KL0; ++kl)
+        if ((k00 + kl) % s == 0) rows.push_back(kl);
+    const int KL = static_cast<int>(rows.size());
+    const int k0 = (k00 + s - 1) / s;   // output row of the first written local slice
     const long long hbytes = 4 * 4 + 8 + 8LL * M + 8LL * K + 4;
     const long long cbytes = 16 + 8LL * K * M;
     const long long total = hbytes + static_cast<long long>(out.size()) * cbytes;
@@ -719,7 +738,7 @@ void Simulation::write_fields(const std::string& fn) const {
         std::memcpy(p, hdr, sizeof(hdr)); p += sizeof(hdr);
         std::memcpy(p, &t_, 8); p += 8;
         std::memcpy(p, grid_->r.data(), 8 * static_cast<size_t>(M)); p += 8 * static_cast<size_t>(M);
-        for (int k = 0; k < K; ++k) { const double x = box_.xi_min + k * box_.dxi; std::memcpy(p, &x, 8); p += 8; }
+        for (int k = 0; k < K; ++k) { const double x = box_.xi_min + k * s * box_.dxi; std::memcpy(p, &x, 8); p += 8; }
         const int32_t nc = static_cast<int32_t>(out.size());
         std::memcpy(p, &nc, 4);
         Comm::write_at(fn, 0, h.data(), h.size(), total);
@@ -733,7 +752,7 @@ void Simulation::write_fields(const std::string& fn) const {
     std::vector<double> v(static_cast<size_t>(KL) * M);
     for (size_t c = 0; c < out.size(); ++c) {
         for (int k = 0; k < KL; ++k)
-            for (int j = 0; j < M; ++j) v[static_cast<size_t>(k) * M + j] = out[c].second(k, j);
+            for (int j = 0; j < M; ++j) v[static_cast<size_t>(k) * M + j] = out[c].second(rows[k], j);
         Comm::write_at(fn, hbytes + static_cast<long long>(c) * cbytes + 16 + 8LL * M * k0, v.data(), 8 * v.size());
     }
 }
@@ -802,10 +821,6 @@ void Simulation::write_beam_output(int n) {
                 o.write(reinterpret_cast<const char*>(ss.data()), 8 * ss.size());
             }
         }
-        if (out_native_ && beam_dump_every_ > 0 && n % beam_dump_every_ == 0) {
-            const std::string fn = outdir_ + "/beam_" + b->name() + "_" + step + ".bin";
-            b->dump(par ? fn + rk : fn);
-        }
     }
     beamlog_.flush();
 }
@@ -832,8 +847,9 @@ void Simulation::merge_partial_outputs() {
             in.close();
             fs::remove(fn);
         }
-        std::ofstream o(outdir_ + "/laser.txt");
-        o << "# step t a_max w_rms xi_centroid L_rms energy (int |a|^2 dV)\n";
+        const bool hdr = !restarted_ || !fs::exists(outdir_ + "/laser.txt");
+        std::ofstream o(outdir_ + "/laser.txt", restarted_ ? std::ios::app : std::ios::trunc);
+        if (hdr) o << "# step t a_max w_rms xi_centroid L_rms energy (int |a|^2 dV)\n";
         for (const auto& e : acc) {
             const auto& S = e.second.second;
             const double E = S[0] > 0 ? S[0] : 1;
@@ -861,13 +877,16 @@ void Simulation::merge_partial_outputs() {
             in.close();
             fs::remove(fn);
         }
-        std::ofstream o(outdir_ + "/ionization.txt");
-        o << "# step t";
-        for (int i : ion_sp_) {
-            const std::string& nm = species_[i]->name();
-            o << "  " << nm << ":born_weight " << nm << ":born_per_m " << nm << ":born_p2 " << nm << ":z_tail";
+        const bool hdr = !restarted_ || !fs::exists(outdir_ + "/ionization.txt");
+        std::ofstream o(outdir_ + "/ionization.txt", restarted_ ? std::ios::app : std::ios::trunc);
+        if (hdr) {
+            o << "# step t";
+            for (int i : ion_sp_) {
+                const std::string& nm = species_[i]->name();
+                o << "  " << nm << ":born_weight " << nm << ":born_per_m " << nm << ":born_p2 " << nm << ":z_tail";
+            }
+            o << ION_LOG_NOTE;
         }
-        o << ION_LOG_NOTE;
         const double n0 = cfg_.get_double("units.n0_cm3") * 1e6;
         const double kpi = 2.99792458e8 / (5.64146e4 * std::sqrt(n0 * 1e-6));
         for (const auto& e : acc) ion_line(o, e.first, e.second.first, e.second.second, n0 * kpi * kpi);
@@ -893,9 +912,11 @@ void Simulation::merge_partial_outputs() {
         }
         std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) {
             return a.second != b.second ? a.second < b.second : a.first < b.first; });
-        std::ofstream o(outdir_ + "/beams.txt");
-        o << "# beam step t alive npart charge gamma_mean gamma_rms xi_mean xi_rms r_rms emit_nx"
-             " x_mean y_mean emit_ny sigma_x sigma_y\n";
+        const bool hdr = !restarted_ || !fs::exists(outdir_ + "/beams.txt");
+        std::ofstream o(outdir_ + "/beams.txt", restarted_ ? std::ios::app : std::ios::trunc);
+        if (hdr)
+            o << "# beam step t alive npart charge gamma_mean gamma_rms xi_mean xi_rms r_rms emit_nx"
+                 " x_mean y_mean emit_ny sigma_x sigma_y\n";
         std::map<std::string, const Beam*> beam;
         for (const auto& b : beams_) beam[b->name()] = b.get();
         for (const auto& key : order) {
@@ -907,8 +928,12 @@ void Simulation::merge_partial_outputs() {
               << d.emit_ny << " " << d.sigma_x << " " << d.sigma_y << "\n";
         }
     }
-    // slices and particle dumps
-    for (const auto& entry : fs::directory_iterator(outdir_)) {
+    // slices and particle dumps (main output directory and the diagnostic groups)
+    std::vector<std::string> dirs;
+    for (const auto& g : groups_)
+        if (std::find(dirs.begin(), dirs.end(), g.dir) == dirs.end()) dirs.push_back(g.dir);
+    for (const auto& d : dirs)
+    for (const auto& entry : fs::directory_iterator(d)) {
         const std::string fn = entry.path().string();
         if (fn.size() < 7 || fn.substr(fn.size() - 6) != ".part0") continue;
         const std::string base = fn.substr(0, fn.size() - 6);
@@ -983,7 +1008,9 @@ void Simulation::write_ion_diag(int n) {
 void Simulation::run() {
     Kokkos::Timer total;
     const int P = comm_.size(), rank = comm_.rank();
-    for (int n = 0; n <= nsteps_; ++n) {
+    if (start_step_ > nsteps_ && comm_.root())
+        std::cout << "restart at step " << start_step_ << " > time.steps = " << nsteps_ << ": nothing to do\n";
+    for (int n = start_step_; n <= nsteps_; ++n) {
         Kokkos::Timer timer;
         // ---- message from the upstream rank: beam particles, plasma state, B+, guard
         std::vector<double> msg;
@@ -1013,19 +1040,7 @@ void Simulation::run() {
         write_beam_output(n);
         if (laser_) write_laser_diag(n);
         if (!ion_sp_.empty()) write_ion_diag(n);
-        char buf[64];
-        std::snprintf(buf, sizeof(buf), "%06d", n);
-        const bool field_out = out_every_ > 0 && n % out_every_ == 0;
-        const bool beam_out = beam_dump_every_ > 0 && n % beam_dump_every_ == 0;
-        if (field_out) {
-            if (out_native_ && field_files_) write_fields(outdir_ + "/fields_" + buf + ".bin");
-            write_axis(outdir_ + "/axis_" + buf + ".txt");
-        }
-        if (opmd_ && (field_out || beam_out)) {
-            static const std::vector<std::unique_ptr<Beam>> none;
-            const auto table = field_out ? field_table() : nullptr;
-            opmd_->write(n, t_, table.get(), beam_out ? beams_ : none);
-        }
+        write_group_outputs(n);
 
         if (comm_.root()) {
             std::cout << "step " << std::setw(6) << n << "  t = " << std::setw(10) << t_ << "   sweep " << std::fixed
@@ -1039,7 +1054,9 @@ void Simulation::run() {
                       << " plasma particles removed as trapped" << std::endl;
         }
 
-        if (n < nsteps_) {
+        // the last step pushes the beams only for a final checkpoint (the state of step n + 1)
+        const bool chk = (chk_every_ > 0 && (n + 1) % chk_every_ == 0 && n < nsteps_) || (n == nsteps_ && chk_at_end_);
+        if (n < nsteps_ || chk) {
             for (size_t b = 0; b < beams_.size(); ++b) {
                 beams_[b]->push(fld, dt_, laser_ ? laser_->ponderomotive() : View3D());
                 if (P > 1) {
@@ -1049,16 +1066,19 @@ void Simulation::run() {
             }
             t_ += dt_;
         }
+        if (chk) write_checkpoint(n + 1);
     }
     comm_.wait_send();
     Kokkos::fence();
-    if (opmd_) opmd_->close();
+    for (auto& g : groups_)
+        if (g.opmd) g.opmd->close();
     beamlog_.close();
     laserlog_.close();
     ionlog_.close();
     const double tmax = comm_.allreduce_max(total.seconds());
     if (P > 1 && comm_.root()) merge_partial_outputs();
     comm_.barrier();
+    if (comm_.root() && (chk_every_ > 0 || chk_at_end_)) prune_checkpoints();
     if (comm_.root()) std::cout << "Total run time " << tmax << " s\n";
 }
 

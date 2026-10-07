@@ -22,13 +22,14 @@ namespace quarz {
 #ifndef QUARZ_USE_OPENPMD
 
 struct OpenPMDWriter::Impl {};
-OpenPMDWriter::OpenPMDWriter(const Config&, const std::string&, const RadialGrid&, const BeamGrid&, bool, double) {
+OpenPMDWriter::OpenPMDWriter(const Config&, const std::string&, const RadialGrid&, const BeamGrid&, bool, double,
+                             const std::string&) {
     throw std::runtime_error("output.format = openpmd: this QUARZ build has no openPMD support "
                              "(install openPMD-api and reconfigure with -DopenPMD_ROOT=...)");
 }
 OpenPMDWriter::~OpenPMDWriter() = default;
 bool OpenPMDWriter::available() { return false; }
-void OpenPMDWriter::write(int, double, const FieldTable*, const std::vector<std::unique_ptr<Beam>>&) {}
+void OpenPMDWriter::write(int, double, const FieldTable*, const std::vector<const Beam*>&, int, int) {}
 void OpenPMDWriter::close() {}
 std::string OpenPMDWriter::description() const { return {}; }
 
@@ -79,8 +80,10 @@ struct OpenPMDWriter::Impl {
 bool OpenPMDWriter::available() { return true; }
 
 OpenPMDWriter::OpenPMDWriter(const Config& cfg, const std::string& outdir, const RadialGrid& grid, const BeamGrid& box,
-                             bool mode1, double dt)
+                             bool mode1, double dt, const std::string& prefix)
     : impl_(std::make_unique<Impl>()) {
+    // group key with fallback to the main output key
+    auto key = [&](const std::string& k) { return cfg.has(prefix + k) ? prefix + k : "output." + k; };
     Impl& I = *impl_;
     Comm& comm = Comm::world();
     I.m1 = mode1;
@@ -109,7 +112,7 @@ OpenPMDWriter::OpenPMDWriter(const Config& cfg, const std::string& outdir, const
     }
 
     // ---- radial output grid
-    const std::string g = cfg.get_string("output.openpmd_grid", "uniform");
+    const std::string g = cfg.get_string(key("openpmd_grid"), "uniform");
     if (g != "uniform" && g != "native") throw std::runtime_error("output.openpmd_grid must be uniform or native");
     I.native = (g == "native");
     const double R = grid.R;
@@ -117,10 +120,10 @@ OpenPMDWriter::OpenPMDWriter(const Config& cfg, const std::string& outdir, const
         I.rout = I.rnodes;
         for (size_t i = 0; i < I.rout.size(); ++i) { I.jl.push_back(static_cast<int>(i)); I.wr.push_back(0.0); }
     } else {
-        const double rmax = std::min(R, cfg.get_double("output.openpmd_rmax", R));
+        const double rmax = std::min(R, cfg.get_double(key("openpmd_rmax"), cfg.get_double(prefix + "rmax", R)));
         double dr;
-        if (cfg.has("output.openpmd_dr")) {
-            dr = cfg.get_double("output.openpmd_dr");
+        if (cfg.has(key("openpmd_dr"))) {
+            dr = cfg.get_double(key("openpmd_dr"));
         } else {
             dr = grid.hmin();
             const int cap = 8192;
@@ -140,15 +143,15 @@ OpenPMDWriter::OpenPMDWriter(const Config& cfg, const std::string& outdir, const
     }
 
     // ---- series
-    I.backend = cfg.get_string("output.openpmd_backend", "h5");
+    I.backend = cfg.get_string(key("openpmd_backend"), "h5");
     if (I.backend != "h5" && I.backend != "bp" && I.backend != "json")
         throw std::runtime_error("output.openpmd_backend must be h5, bp or json");
-    const std::string pattern = cfg.get_string("output.openpmd_file", "openpmd/data_%06T");
+    const std::string pattern = cfg.get_string(key("openpmd_file"), "openpmd/data_%06T");
     I.filename = outdir + "/" + pattern + "." + I.backend;
     const auto dir = std::filesystem::path(I.filename).parent_path();
     if (comm.root() && !dir.empty()) std::filesystem::create_directories(dir);
     comm.barrier();
-    I.options = cfg.get_string("output.openpmd_options", "{}");
+    I.options = cfg.get_string(key("openpmd_options"), "{}");
     // the series is created at the first write (collective): a file-based series without
     // iterations cannot be closed
 }
@@ -203,7 +206,8 @@ std::string OpenPMDWriter::description() const {
     return out;
 }
 
-void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::vector<std::unique_ptr<Beam>>& beams) {
+void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::vector<const Beam*>& beams, int xs,
+                          int pstride) {
     using namespace openPMD;
     Impl& I = *impl_;
     if (!I.series) I.open();
@@ -213,8 +217,13 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
     it.setDt(I.dt);
     it.setTimeUnitSI(I.uT);
 
-    const int K = I.box.nxi, KL = I.box.nloc, k0 = I.box.k0;
-    const double zmin = t - (I.box.xi_min + (K - 1) * I.box.dxi);   // z = t - xi, increasing z = decreasing xi
+    // every xs-th slice: global slices 0, xs, 2xs, ...; the local ones are rows[]
+    std::vector<int> rows;
+    for (int kl = 0; kl < I.box.nloc; ++kl)
+        if ((I.box.k0 + kl) % xs == 0) rows.push_back(kl);
+    const int K = (I.box.nxi - 1) / xs + 1, KL = static_cast<int>(rows.size()), k0 = (I.box.k0 + xs - 1) / xs;
+    const double dxi = I.box.dxi * xs;
+    const double zmin = t - (I.box.xi_min + (K - 1) * dxi);   // z = t - xi, increasing z = decreasing xi
 
     if (T) {
         const int nm = I.m1 ? 3 : 1;
@@ -238,7 +247,7 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
             }
             m.setDataOrder(Mesh::DataOrder::C);
             m.setAxisLabels({"r", "z"});
-            m.setGridSpacing(std::vector<double>{dr, I.box.dxi});
+            m.setGridSpacing(std::vector<double>{dr, dxi});
             m.setGridGlobalOffset({0.0, zmin});
             m.setGridUnitSI(I.uL);
             m.setUnitDimension(ud);
@@ -261,7 +270,8 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
                         const int j = I.jl[i];
                         const double a = I.wr[i];
                         for (int kl = 0; kl < KL; ++kl) {
-                            const double v = a > 0 ? (1 - a) * (*f[m])(kl, j) + a * (*f[m])(kl, j + 1) : (*f[m])(kl, j);
+                            const int k = rows[kl];
+                            const double v = a > 0 ? (1 - a) * (*f[m])(k, j) + a * (*f[m])(k, j + 1) : (*f[m])(k, j);
                             p[(static_cast<size_t>(m) * NR + i) * KL + (KL - 1 - kl)] = v;
                         }
                     }
@@ -275,21 +285,24 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
         const UD udPsi{{UnitDimension::L, 2}, {UnitDimension::M, 1}, {UnitDimension::T, -3}, {UnitDimension::I, -1}};
         const UD udN{{UnitDimension::L, -3}};
         const UD udRho{{UnitDimension::L, -3}, {UnitDimension::T, 1}, {UnitDimension::I, 1}};
-        {
-            Mesh E = it.meshes["E"];
-            setup_mesh(E, udE);
-            store(E["r"], "er", I.uE);
-            store(E["t"], "eth", I.uE);
-            store(E["z"], "ez", I.uE);
-        }
-        {
-            Mesh B = it.meshes["B"];
-            setup_mesh(B, udB);
-            store(B["r"], "br", I.uB);
-            store(B["t"], "bth", I.uB);
-            store(B["z"], "bz", I.uB);
-        }
+        // vector records with the selected components only
+        auto vector = [&](const std::string& rec, const char* const comp[3], const char* const name[3], const UD& ud,
+                          double unit) {
+            bool any = false;
+            for (int c = 0; c < 3; ++c) any = any || T->find(name[c]);
+            if (!any) return;
+            Mesh m = it.meshes[rec];
+            setup_mesh(m, ud);
+            for (int c = 0; c < 3; ++c)
+                if (T->find(name[c])) store(m[comp[c]], name[c], unit);
+        };
+        const char* const rtz[3] = {"r", "t", "z"};
+        const char* const en[3] = {"er", "eth", "ez"};
+        const char* const bn[3] = {"br", "bth", "bz"};
+        vector("E", rtz, en, udE, I.uE);
+        vector("B", rtz, bn, udB, I.uB);
         auto scalar = [&](const std::string& rec, const std::string& name, const UD& ud, double unit) {
+            if (!T->find(name)) return;
             Mesh m = it.meshes[rec];
             setup_mesh(m, ud);
             store(m[MeshRecordComponent::SCALAR], name, unit);
@@ -311,8 +324,14 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
         }
     }
 
-    for (const auto& bp : beams) {
-        const std::vector<double> p = bp->packed();
+    for (const Beam* bp : beams) {
+        std::vector<double> p = bp->packed();
+        if (pstride > 1) {
+            std::vector<double> q;
+            for (size_t i = 0; i < p.size() / 7; i += static_cast<size_t>(pstride))
+                q.insert(q.end(), p.begin() + 7 * i, p.begin() + 7 * i + 7);
+            p.swap(q);
+        }
         const long long nloc = static_cast<long long>(p.size() / 7);
         const long long ntot = allreduce_sum(nloc);
         if (ntot == 0) continue;   // same decision on every rank
