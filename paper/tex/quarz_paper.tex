@@ -23,7 +23,7 @@
 \date{\today}
 
 \begin{abstract}
-We present a quasi-static particle-in-cell scheme for beam-driven plasma wakefields in $(r,\theta,\xi)$ geometry that works on an arbitrary non-uniform radial grid. The field equations are discretized with hat-function finite elements and conservative finite volumes on any monotone set of radial nodes. The transverse magnetic field is obtained explicitly, without iterations, following Baxevanis and Stupakov. An optional azimuthal mode $m=1$ captures beam offsets, tilts and hosing. The discretization keeps the discrete Gauss law exact, deposits a uniform plasma exactly on every node including the axis, and is second-order accurate on smoothly stretched grids. For a pinched low-emittance witness with mobile ions, a stretched grid of 512 cells ($5\times10^{-4}\,c/\omega_p$ on the axis) gives the near-axis focusing field to 0.03\%, whereas a uniform grid of 1600 cells has a 1.2\% error, at a third of the cost. Both grids converge at second order; for a given accuracy the stretched grid needs about 20 times fewer cells. The scheme is implemented in the C++/Kokkos code QUARZ (Quasistatic Arbitrary-resolution RZ), which runs on CPUs and GPUs and uses MPI with a pipelined decomposition along $\xi$.
+We present a quasi-static particle-in-cell scheme for beam-driven plasma wakefields in $(r,\theta,\xi)$ geometry that works on an arbitrary non-uniform radial grid. The field equations are discretized with hat-function finite elements and conservative finite volumes on any monotone set of radial nodes. The transverse magnetic field is obtained explicitly, without iterations, following Baxevanis and Stupakov. An optional azimuthal mode $m=1$ captures beam offsets, tilts and hosing. The discretization keeps the discrete Gauss law exact, deposits a uniform plasma exactly on every node including the axis, and is second-order accurate on smoothly stretched grids. For a pinched low-emittance witness with mobile ions, a stretched grid of 512 cells ($5\times10^{-4}\,c/\omega_p$ on the axis) gives the near-axis focusing field to 0.03\%, whereas a uniform grid of 1600 cells has a 1.2\% error, at a third of the cost. Both grids converge at second order; for a given accuracy the stretched grid needs about 20 times fewer cells. A fine axial mesh also resolves the singular closure of a cold-plasma bubble, which a uniform grid smooths implicitly over one cell; smoothing the plasma sources over a fixed length, independent of the grid, regularizes it and makes the wake behind the closure converge. The scheme is implemented in the C++/Kokkos code QUARZ (Quasistatic Arbitrary-resolution RZ), which runs on CPUs and GPUs and uses MPI with a pipelined decomposition along $\xi$.
 \end{abstract}
 
 \maketitle
@@ -99,7 +99,7 @@ with $f(0)=0$. For $n=1$ this is the familiar $\partial_r[(1/r)\partial_r(rB)]$.
 
 \paragraph{Exact $\xi$-derivatives of the deposits.} The source $\partial_\xi(\rho - J_z)$ of $E_z$, and $\partial_\xi\bm{J}_\perp$, are not differenced between slices. Each particle deposits the exact $\xi$-derivative of its own discrete deposit, $w\,W_j'(r_p)\,\dd r_p/\dd\xi$, plus the azimuthal part for $m=1$. With this choice, $E_z$ is the exact discrete $\xi$-derivative of $\psi$ in every mode.
 
-\paragraph{Gradients} ($\bm{W}_\perp = -\nabla_\perp\psi$ and the Lorentz-force terms) use the three-point second-order formula for non-uniform spacing. On smoothly stretched grids all operators converge at second order; measured orders against manufactured solutions are 1.9--2.0 for $L_0$, $L_1$ and $L_2$ ($h_0 = 0.01\to0.00125$, ratio $\le 1.05$). Abrupt jumps in spacing reduce the accuracy locally to first order.
+\paragraph{Gradients} ($\bm{W}_\perp = -\nabla_\perp\psi$ and the Lorentz-force terms) use the three-point second-order formula for non-uniform spacing. On smoothly stretched grids all operators converge at second order; measured orders against manufactured solutions are 1.9--2.0 for $L_0$, $L_1$ and $L_2$ ($h_0 = 0.01\to0.00125$, ratio $\le 1.05$). Abrupt jumps in spacing reduce the accuracy locally to first order. A fine axial mesh also resolves the singular closure of a cold-plasma bubble; Sec.~\ref{sec:closure} shows how it is regularized independently of the grid.
 
 %---------------------------------------------------------------------------
 \section{Azimuthal mode $m=1$}\label{sec:m1}
@@ -231,6 +231,27 @@ With randomly sampled macro-particle beams ($4\times10^5$ driver and $2\times10^
 \label{fig:evolution}
 \end{figure*}
 
+\subsection{Bubble closure on a fine axial mesh}\label{sec:closure}
+
+The fine axial mesh that resolves the witness also resolves the rear of the bubble, where the sheath electrons return to the axis. For a cold plasma and an exactly axisymmetric driver they all cross the axis within a short interval of $\xi$. Their trajectories form a caustic, and the on-axis electron density and $E_z$ are singular there~\cite{Lotov2003}. The spike carries no energy, and it does not exist in a real plasma, which is warm and never perfectly symmetric. What matters is the wake behind it.
+
+To study the closure, we extend the box of Sec.~\ref{sec:pinch} to $\xi = 12$; the bubble closes at $\xi \approx 9.05$ (Fig.~\ref{fig:closure}). A uniform grid regularizes the caustic implicitly, over one cell. With $\Delta r = 0.005$ the peak field is $E_z(0) \approx -14$ and the on-axis density about $1.7\times10^4\,n_0$. The stretched grid with $h_0 = 5\times10^{-4}$ removes this hidden smoothing. As $\Delta\xi$ decreases from 0.005 to $6.25\times10^{-4}$, the peak grows from $-15$ to $-78$ and the on-axis density from $7.5\times10^4$ to about $10^6\,n_0$. The wake behind the closure ($9.2 < \xi < 11.9$) still converges, but slowly and irregularly: the rms error of $E_z(0)$ is 0.42\%, 0.36\% and 0.19\% for $\Delta\xi = 0.005$, 0.0025 and 0.00125 [Fig.~\ref{fig:closure}(b)].
+
+Rather than let the grid set the regularization, we make it an explicit parameter, a length $a$ independent of the mesh. In each slice, all plasma sources ($\rho - J_z$ and its $\xi$-derivative, $J_z$, $\bm{J}_\perp$, $\chi$, the explicit part of $\partial_\xi\bm{J}_\perp$) and the neutralizing ion background are replaced by
+\begin{equation}
+\tilde f = \left(1 - a^2\nabla_\perp^2\right)^{-1} f , \label{eq:smooth}
+\end{equation}
+so that every ring acquires the radial profile of the two-dimensional Green's function $K_0(|\bm{r}-\bm{r}'|/a)/(2\pi a^2)$. Each azimuthal component of angular number $n$ is filtered with its own operator, $(1 - a^2 L_n)\tilde f = f$, using Eqs.~\eqref{eq:L0} and \eqref{eq:Ln} with a zero-flux wall for $n=0$. This adds one tridiagonal solve per source and slice. The filter conserves the total charge exactly, leaves a uniform plasma unchanged, and is the same in every slice, so $E_z$ remains the exact discrete $\xi$-derivative of $\psi$. Beams are not filtered.
+
+With $a = 0.005$ (ten axis cells) the closure is resolved: the peak field is $-8.3$ to $-8.8$ and the on-axis density $1$--$2\times10^4\,n_0$, for all $\Delta\xi$ and for axis cells from $10^{-3}$ to $2.5\times10^{-4}$. The wake behind the closure now converges cleanly, with errors of 0.18\%, 0.08\% and 0.05\% in $E_z(0)$ (0.10\%, 0.012\% and 0.008\% in $\psi$). Changing the axis cell to $10^{-3}$ or $2.5\times10^{-4}$ changes it by 0.09\% and 0.37\%. The price is a change of the model of order $a$: compared with the cold solution, the wake behind the closure differs by 0.4\% in $E_z(0)$ and 0.6\% in $\psi(0)$, and the field in the witness by $2\times10^{-4}$, far below the errors of the uniform grids in Table~\ref{tab:pinch}. The results of Sec.~\ref{sec:pinch}, computed without smoothing, therefore stand. The filter costs 10--25\% of the sweep time.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figs/fig_closure.pdf}
+\caption{Bubble closure in the pinched-witness case of Fig.~\ref{fig:maps}, with the box extended to $\xi=12$ (single quasi-static solve). (a) $E_z$ on the axis at the closure: uniform grid $\Delta r = 0.005$; stretched grid ($h_0 = 5\times10^{-4}$) with a cold plasma and with smoothing of the plasma sources, Eq.~\eqref{eq:smooth}, $a = 0.005$. The cold spike reaches $-78$ at $\Delta\xi = 6.25\times10^{-4}$. (b) Rms relative error of $E_z(0)$ and $\psi(0)$ behind the closure ($9.2<\xi<11.9$) versus $\Delta\xi$, with respect to $\Delta\xi = 6.25\times10^{-4}$ of the same model. Triangles: $a = 0.005$ with axis cells $10^{-3}$ and $2.5\times10^{-4}$ ($\Delta\xi = 0.00125$).}
+\label{fig:closure}
+\end{figure*}
+
 \subsection{Parallel runs}
 
 MPI runs were compared file by file with serial runs that use the same nearest-slice beam assignment. Runs without beam particles crossing rank boundaries are bit-identical (witness gain, ion motion, parsed profiles, analytic offset driver with $m=1$). When particles move between ranks, their order in memory changes and the results differ at round-off level: $10^{-10}$ in the fields for hosing ($m=1$, 12 steps) and $5\times10^{-8}$ for a $\gamma=5$ beam slipping through all ranks. On 2 CPU cores the speed-up is 1.77--1.83 for 13--25 sweeps, against 1.86--1.92 for an ideal pipeline. On a GPU of the NVIDIA Blackwell generation (GB202), a run is about 50 times faster than on a single thread of an Intel Xeon E5620 CPU.
@@ -241,6 +262,8 @@ MPI runs were compared file by file with serial runs that use the same nearest-s
 \section{Conclusions}
 
 A quasi-static RZ scheme can run on any monotone radial grid without losing the properties that make uniform-grid codes robust: exact discrete Gauss law, exact uniform-plasma deposition on the axis, second-order accuracy and an iteration-free $\bm{B}_\perp$ solve. The cost per slice stays linear in the number of cells, so resolution can be spent where the physics needs it. For a pinched witness with ion motion this gives 10--90 times smaller errors than a uniform grid at a third of the cost, or the same accuracy with 20 times fewer cells. The same operators carry over to the $m=1$ mode, and the code scales across CPU cores and GPUs through pipelining along $\xi$.
+
+A fine axial mesh also exposes the singular closure of a cold-plasma bubble, which uniform grids hide by smoothing it over one cell. An explicit smoothing of the plasma sources over a length chosen independently of the grid regularizes it; the wake behind the closure then converges, and the model changes only at order of the smoothing length.
 
 The code already contains a laser envelope solver on the same grid (a complex tridiagonal Crank--Nicolson step per slice) and field and impact ionization, which will be described separately. Natural further extensions are higher azimuthal modes and adaptive grids that follow the witness radius during the run.
 
