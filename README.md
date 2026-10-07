@@ -701,6 +701,12 @@ density are skipped.
 | `output.every` | 1 | write fields every n steps (0 = never) |
 | `output.field_files` | 1 | 0: do not write the 2D field files `fields_*.bin` at these steps, only the on-axis data `axis_*.txt` (long runs, fine Δξ) |
 | `output.beam_every` | 0 | write beam particles every n steps |
+| `output.fields` | `all` | field components of the main output: `all`, `none`, or a list of `psi ez er eth br bth bz ne ni rhob nz_<species> a` (`a` = laser envelope; with m = 1 a name includes its `_c`, `_s` parts) |
+| `output.beams` | `all` | beams whose particles are written: `all`, `none` or a list of names |
+| `output.rmax` | R | write the fields only for r ≤ rmax (up to the first node ≥ rmax); also limits the uniform openPMD grid |
+| `output.xi_stride` | 1 | write every n-th slice (ξ = ξ_min, ξ_min + nΔξ, …) |
+| `output.particle_stride` | 1 | write every n-th beam particle (per rank) |
+| `output.axis` | 1 | write `axis_*.txt` with the field output |
 | `output.beam_slices` | 0 | number of ξ-bins for per-slice beam diagnostics (centroid, size, γ, ε) written at field outputs |
 | `output.beam_slices_range` | box | `lo hi`: ξ-range of these bins (default: the whole box); the bins are fixed, so files at different steps line up |
 | `output.format` | `native` | `native` (QUARZ binary/text files), `openpmd`, or `both`. With `openpmd`, the native field files and particle dumps are not written; `axis_*`, `beams.txt` and `slices_*` always are. |
@@ -710,6 +716,32 @@ density are skipped.
 | `output.openpmd_dr`, `output.openpmd_rmax` | h_min, R | spacing and extent of the uniform radial grid (default h_min, at most 8192 points) |
 | `output.openpmd_options` | `{}` | JSON/TOML options passed to openPMD-api (compression, ADIOS2 engine, …) |
 | `units.n0_cm3` | — | plasma density for SI units in the openPMD files; without it the data are in normalised units (all `unitSI` = 1) |
+
+**Diagnostic groups.** Additional outputs, each with its own period and selection, so that
+frequent small dumps and rare full dumps can be combined (§6):
+
+| key | default | meaning |
+|---|---|---|
+| `diag.names` | — | names of the groups, e.g. `diag.names = light` |
+| `diag.<name>.every` | 0 | field output period of the group (steps; 0 = no fields) |
+| `diag.<name>.beam_every` | `every` | particle output period of the group |
+| `diag.<name>.fields` | `all` | as `output.fields` |
+| `diag.<name>.beams` | `all` | as `output.beams` |
+| `diag.<name>.rmax`, `.xi_stride`, `.particle_stride` | R, 1, 1 | as `output.rmax`, … |
+| `diag.<name>.axis` | 0 | also write `axis_*.txt` into the group directory |
+| `diag.<name>.format` | `output.format` | `native`, `openpmd` or `both` |
+| `diag.<name>.field_files` | 1 | as `output.field_files` |
+| `diag.<name>.openpmd_*` | `output.openpmd_*` | openPMD settings of the group (backend, file pattern, grid, dr, rmax, options) |
+
+**Checkpoints and restart**
+
+| key | default | meaning |
+|---|---|---|
+| `checkpoint.every` | 0 | write a checkpoint every n steps (0 = never) |
+| `checkpoint.at_end` | 1 if `every` > 0 | write a checkpoint at the end of the run (to continue it with a larger `time.steps`) |
+| `checkpoint.keep` | 2 | keep the newest n complete checkpoints, delete older ones (0 = keep all) |
+| `checkpoint.dir` | `<output.dir>/checkpoints` | directory of the checkpoints |
+| `restart.from` | — | restart from a checkpoint directory (`.../chk_NNNNNN`) or `latest` (newest complete checkpoint in `checkpoint.dir`) |
 
 **Physical units.** At plasma density n₀ [cm⁻³]:
 
@@ -753,6 +785,7 @@ density are skipped.
   (`*.partN`) and merged into the usual files by rank 0 at the end of the run;
   if a run is killed, the `.partN` files hold the data.
 - **`beam_<name>_NNNNNN.bin`**: int32 n, then n × (x, y, p_x, p_y, p_z, ξ, w).
+  Particles removed from the beam (w = 0) are not written.
 - **openPMD** (`output.format = openpmd` or `both`): one file per output step,
   `openpmd/data_NNNNNN.h5` (or `.bp`, `.json`), following the
   [openPMD standard 1.1](https://github.com/openPMD/openPMD-standard).
@@ -780,6 +813,50 @@ density are skipped.
     native format, which needs no synchronisation, is cheaper.
   - Reading: `openpmd_viewer.OpenPMDTimeSeries('out/openpmd/')`, e.g.
     `ts.get_field('E', 'z', iteration=n, m='all', theta=0)`.
+- **Diagnostic groups** (`diag.names`) write into `<output.dir>/<name>/`, with the same file
+  names and formats as the main output (`fields_*.bin`, `beam_*_*.bin`, `axis_*.txt`,
+  `openpmd/…`), restricted to their selection. A field file with `rmax` and `xi_stride` holds
+  the written nodes and slices in its r and ξ header arrays, so `tools/quarz_read.py` reads it
+  unchanged. The main output (`output.*`) is a group too; set `output.every = 0` to have only
+  the named groups. Example: full data rarely, the accelerating field and the witness often:
+
+  ```
+  output.every       = 200            # everything every 200 steps
+  output.beam_every  = 200
+  diag.names         = light
+  diag.light.every   = 5
+  diag.light.fields  = ez psi ne
+  diag.light.rmax    = 1.0
+  diag.light.xi_stride = 2
+  diag.light.beams   = witness
+  checkpoint.every   = 1000
+  ```
+
+  In the pinched-witness case such a group (ez, ψ, n_e, r ≤ 1, every 3rd slice, every 7th
+  witness particle) is 6 % of the size of the full output.
+- **Checkpoints** (`checkpoint.every`): `checkpoints/chk_NNNNNN/` with `checkpoint.txt`
+  (step, t, number of ranks, the full deck) and one `rank_<r>.bin` per rank. A checkpoint
+  `chk_N` holds the state at the beginning of step N:
+  - all beam particles in memory order (removed ones included), the particles in transit to
+    the downstream rank, and the leapfrog start flag of each beam;
+  - the laser envelope;
+  - t and the step.
+
+  The plasma needs no state, because it is loaded anew at the head of the box in every step.
+  Every rank writes its own file as soon as it has finished step N − 1, so checkpoints do not
+  stall the ξ pipeline. A checkpoint is complete when all rank files exist (each is written to
+  a temporary file and renamed). `checkpoint.keep` deletes older checkpoints only after a newer
+  one is complete.
+- **Restart:** `quarz deck.in restart.from=out/checkpoints/chk_000500` (or `restart.from=latest`),
+  with the same deck; `time.steps` is the last step of the whole run. The radial grid, the ξ
+  box, the modes, the beams and the laser must be those of the checkpoint. The run continues
+  at step N, and the restarted part is bit-identical to an uninterrupted run (same number of
+  ranks, one OpenMP thread per rank; with several threads the atomic deposits are not
+  bit-reproducible in any run). With a different number of ranks, the particles and envelope
+  slices are redistributed. Restarting into the same `output.dir` truncates `beams.txt`,
+  `laser.txt` and `ionization.txt` at step N and continues them; field and particle files of
+  steps ≥ N are overwritten. Diagnostics with a single-file openPMD series (pattern without
+  `%T`) are refused on restart, because the file would be overwritten.
 - **Python helpers.** `tools/quarz_read.py` reads all of these;
   `xz_plane()` builds the field in the (ξ, x) plane from the modes.
   `tools/plot_fields.py` makes a quick-look PNG.
@@ -898,6 +975,23 @@ and analytic beam densities.
 | Model difference a = 0.005 vs cold | behind the bubble E_z 0.43 %, ψ 0.64 %; witness E_z 2·10⁻⁴ |
 | 2 MPI ranks vs serial with smoothing | bit-identical |
 | Hosing (`modes = 1`), LWFA with laser, a = 0.005 | run; hosing centroid changed far less than by halving the cells |
+
+**Checkpoints, restart and diagnostic groups** (section 15; `restart_check.py` compares every
+output file of the restarted part with the uninterrupted run, `group_check.py` the group
+files with the main output):
+
+| test | result |
+|---|---|
+| Default output (no groups, no checkpoints) vs the code before | all files bit-identical |
+| Restart from step 2, particle witness + mobile ions, serial | all fields, axis, particle files and `beams.txt` lines bit-identical |
+| Restart, laser envelope + witness (LWFA), serial | bit-identical |
+| Restart, laser + field ionization (`lwfa_ionization.in`), serial and 2 ranks → 2 ranks | bit-identical, incl. `laser.txt`, `ionization.txt` |
+| Restart, m = 1 hosing | bit-identical |
+| 2 ranks → restart with 2 / 3 ranks / serial (particles and envelope slices redistributed) | bit-identical (2 → 2); 0 difference also for 2 → 3 and 2 → 1 in these runs |
+| Restart into the same directory | `beams.txt` identical to the uninterrupted run |
+| `checkpoint.keep = 2`, a checkpoint every step | the two newest kept |
+| Group: ez ψ n_e, r ≤ 1, every 3rd slice, witness every 7th particle (serial); ez B_θ, r ≤ 0.5, every 4th slice (3 ranks) | exact subsets of the main output; 5.9 % and 1.8 % of its size |
+| openPMD group (JSON): E_z, ψ, witness every 5th particle, every 2nd slice | only mesh E (component z), ψ and species witness; 901 slices, 40 000 particles |
 
 **MPI vs serial** (`validation/cmp_runs.py` compares every output file; serial runs with
 `beams.xi_shape = ngp`, one OpenMP thread per rank, 2 cores; P = 3, 4 oversubscribed):
@@ -1023,11 +1117,10 @@ comparison, the blowout on the stretched grid, and the SMI run.
 - Azimuthal modes m ≥ 2 (the transverse field of a beam displaced by more
   than a fraction of its size, or of an elliptical beam, is only
   approximated).
-- Plasma-particle sub-stepping near the axis, and noise-reduction options
-  (LCODE's "noise reducer").
+- Noise-reduction options (LCODE's "noise reducer"); adaptive sub-slicing and radial
+  smoothing of the plasma sources exist (§1).
 - Adaptive Δξ.
 - Beam macro-particle splitting.
-- Checkpoint/restart.
 - Transverse (r) decomposition: MPI splits only the ξ box. For a single
   time step (no pipelining possible) MPI therefore gives no speed-up.
 - Dynamic load balancing between MPI ranks (the slice blocks are equal and fixed).

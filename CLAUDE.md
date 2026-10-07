@@ -45,7 +45,7 @@ cmake -B build -DKokkos_ENABLE_OPENMP=ON \
 cmake --build build -j2 && (cd build && ctest)
 export OMP_PROC_BIND=false            # needed here, otherwise OpenMP runs badly
 cd validation && ./run_validation.sh -q -j 2 -c       # quick regression, ~2 min: after EVERY code change
-cd validation && ./run_validation.sh -j 2 -c          # full suite (sections 1-14), ~7-10 min: milestones / new physics
+cd validation && ./run_validation.sh -j 2 -c          # full suite (sections 1-15), ~7-10 min: milestones / new physics
 ```
 CUDA compile check (no GPU here):
 `PATH=/usr/local/lib/python3.11/dist-packages/nvidia/cu13/bin:$PATH CUDA_HOME=/usr/local/lib/python3.11/dist-packages/nvidia/cu13 make -C build-cuda -j2 quarz`
@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -105,6 +105,16 @@ Done and validated (README §7, `validation/reference_full.txt`):
   behind the bubble, 2e-4 at the witness.
   Temperature alone (uth) is not a reliable regularizer (seed dependent). Section 14, test_filter.
   Agreed with Alexander 2026-10-07 (the spike is unphysical: cold plasma, perfect cylinder).
+- checkpoints / restart and diagnostic output groups (src/SimulationIO.cpp): `checkpoint.every`,
+  `.keep`, `.at_end`, `.dir`, `restart.from` (path or latest). Per-rank files written without
+  sync (pipeline keeps running), tmp + rename, complete = all rank files; state = beams in memory
+  order incl. dead (packed_all), outbox_, Beam::started_, laser envelope (Laser::current), t, step.
+  Restart with same P bit-identical (1 thread), other P redistributes (restrict_to_local, envelope
+  slices by global index); logs truncated at the restart step. Groups: main output (output.*) +
+  `diag.names` with every/beam_every/fields/beams/rmax/xi_stride/particle_stride/axis/format/
+  openpmd_* (OutputGroup; OpenPMDWriter takes the key prefix, writes only present components).
+  Section 15 (restart_check.py, group_check.py, group_openpmd_check.py). Note: runs with >1 OpenMP
+  thread are not bit-reproducible (atomic deposits, ~1e-11) — any bit-identity test needs 1 thread.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
@@ -142,7 +152,7 @@ Done and validated (README §7, `validation/reference_full.txt`):
    smoothing regularization (plasma.smooth_length) with its O(a) cost.
 3. Long-term stability/noise behind long drivers (AWAKE-length).
 Later: m >= 2 modes; trapped electrons -> beam particles; phase-corrected / m = 1 laser
-envelope; checkpoint/restart, beams from openPMD files, warm plasma, Python/PICMI interface;
+envelope; beams from openPMD files, warm plasma, Python/PICMI interface;
 GPU benchmark vs a full current CPU node, fused slice kernels; Bethe data beyond Ar.
 
 ## Earlier proposals
