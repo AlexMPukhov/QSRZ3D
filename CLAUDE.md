@@ -151,7 +151,10 @@ Done and validated (README §7, `validation/reference_full.txt`):
    a short paragraph/figure on the closure spike vs the converged wake behind it, and the
    smoothing regularization (plasma.smooth_length) with its O(a) cost.
 3. Long-term stability/noise behind long drivers (AWAKE-length).
-Later: m >= 2 modes; trapped electrons -> beam particles; phase-corrected / m = 1 laser
+Later: m >= 2 modes (POSTPONED, agreed 2026-10-07: only for generality; flat beams not a goal.
+For AWAKE e-seed misalignment m = 1 suffices to O((d/sigma)^2): check by an offset scan,
+response/d constant = linear regime, plus one QPAD/HiPACE++ case at the largest offset.
+Estimate if ever done: 3-5 days, refactor to mode-indexed arrays first); trapped electrons -> beam particles; phase-corrected / m = 1 laser
 envelope; beams from openPMD files, warm plasma, Python/PICMI interface;
 GPU benchmark vs a full current CPU node, fused slice kernels; Bethe data beyond Ar.
 
