@@ -53,7 +53,7 @@ def svg(w, h, body, title):
             f'<title>{title}</title>{body}</svg>\n')
 
 def logo(dark):
-    bg, ink, sub = ('#0B0F18', '#EEF1F4', '#A9B2BE') if dark else ('#F4F5F2', '#141821', '#4D5562')
+    bg, ink, sub = ('#0B0F18', '#EEF1F4', '#A9B2BE') if dark else ('#F4F5F2', '#1F3A5F', '#566E8E')
     W, H = 720, 320
     b = f'<rect width="{W}" height="{H}" fill="{bg}"/>'
     b += f'<g><path d="{SP}" transform="translate(590 100) scale(150)" fill="{AMBER}" opacity="0.22"/>'
@@ -69,7 +69,7 @@ files = {
     'quarz-logo-dark.svg': logo(True),
     'quarz-logo-light.svg': logo(False),
     'quarz-mark-dark.svg': svg(212, 212, f'<g transform="translate(6 6)">{mark("#EEF1F4")}</g>', 'QUARZ'),
-    'quarz-mark-light.svg': svg(212, 212, f'<g transform="translate(6 6)">{mark("#141821")}</g>', 'QUARZ'),
+    'quarz-mark-light.svg': svg(212, 212, f'<g transform="translate(6 6)">{mark("#1F3A5F")}</g>', 'QUARZ'),
     'quarz-avatar.svg': svg(512, 512, f'<rect width="512" height="512" fill="#0B0F18"/><svg x="56" y="56" width="400" height="400" viewBox="-6 -6 212 212">{small_mark("#EEF1F4")}</svg>', 'QUARZ'),
     'favicon.svg': svg(32, 32, f'<rect width="32" height="32" rx="7" fill="#0B0F18"/><svg x="3" y="3" width="26" height="26" viewBox="-6 -6 212 212">{tiny_mark("#EEF1F4")}</svg>', 'QUARZ'),
 }

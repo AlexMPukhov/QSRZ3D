@@ -14,7 +14,7 @@ sparks in the background mark that the code was developed with an AI assistant (
 | `quarz-avatar.svg` / `.png` | 512 × 512, simplified mark: GitHub avatar, social media |
 | `favicon.svg` | 32 × 32, ring, head and three microbunches |
 
-Colours: background `#0B0F18` (dark) / `#F4F5F2` (light), ink `#EEF1F4` / `#141821`, bunch
+Colours: background `#0B0F18` (dark) / `#F4F5F2` (light), ink `#EEF1F4` / navy `#1F3A5F` (tagline `#566E8E`), bunch
 cyan `#0E8FB8`, sparks amber `#F2A93B`. Lettering: Space Grotesk Bold (wordmark) and
 IBM Plex Mono Medium (tagline), both SIL Open Font License, converted to outlines, so the
 SVGs need no fonts. `make_logo.py` regenerates the SVGs
