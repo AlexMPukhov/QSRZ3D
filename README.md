@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/quarz-logo-dark.svg">
+    <img src="docs/logo/quarz-logo-light.svg" alt="QUARZ: Quasistatic Arbitrary-resolution RZ" width="600">
+  </picture>
+</p>
+
 # QUARZ — Quasistatic Arbitrary-resolution RZ code
 
 *Quasi-static PIC code in (r, θ, ξ) with azimuthal modes m = 0, 1 and a flexible non-uniform radial grid.*
