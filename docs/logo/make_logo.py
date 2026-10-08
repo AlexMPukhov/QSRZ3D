@@ -71,6 +71,7 @@ files = {
     'quarz-mark-dark.svg': svg(212, 212, f'<g transform="translate(6 6)">{mark("#EEF1F4")}</g>', 'QUARZ'),
     'quarz-mark-light.svg': svg(212, 212, f'<g transform="translate(6 6)">{mark("#1F3A5F")}</g>', 'QUARZ'),
     'quarz-avatar.svg': svg(512, 512, f'<rect width="512" height="512" fill="#0B0F18"/><svg x="56" y="56" width="400" height="400" viewBox="-6 -6 212 212">{small_mark("#EEF1F4")}</svg>', 'QUARZ'),
+    'quarz-avatar-light.svg': svg(512, 512, f'<rect width="512" height="512" fill="#F4F5F2"/><svg x="56" y="56" width="400" height="400" viewBox="-6 -6 212 212">{small_mark("#1F3A5F")}</svg>', 'QUARZ'),
     'favicon.svg': svg(32, 32, f'<rect width="32" height="32" rx="7" fill="#0B0F18"/><svg x="3" y="3" width="26" height="26" viewBox="-6 -6 212 212">{tiny_mark("#EEF1F4")}</svg>', 'QUARZ'),
 }
 for n, s in files.items():

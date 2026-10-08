@@ -12,6 +12,7 @@ sparks in the background mark that the code was developed with an AI assistant (
 | `quarz-logo-light.svg` / `.png` | full logo on a light background (README, posters, papers) |
 | `quarz-mark-dark.svg` / `-light.svg` (`.png`) | the Q alone, transparent background |
 | `quarz-avatar.svg` / `.png` | 512 × 512, simplified mark: GitHub avatar, social media |
+| `quarz-avatar-light.svg` / `.png` | the same on the light background, navy ring |
 | `favicon.svg` | 32 × 32, ring, head and three microbunches |
 
 Colours: background `#0B0F18` (dark) / `#F4F5F2` (light), ink `#EEF1F4` / navy `#1F3A5F` (tagline `#566E8E`), bunch
