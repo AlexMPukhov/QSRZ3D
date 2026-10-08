@@ -115,6 +115,19 @@ Done and validated (README §7, `validation/reference_full.txt`):
   openpmd_* (OutputGroup; OpenPMDWriter takes the key prefix, writes only present components).
   Section 15 (restart_check.py, group_check.py, group_openpmd_check.py). Note: runs with >1 OpenMP
   thread are not bit-reproducible (atomic deposits, ~1e-11) — any bit-identity test needs 1 thread.
+- AWAKE SM benchmark by Thomas (2026-10-08, deck = John's IPAC26 TUP3035 Fig. 2 case; proton
+  driver 20 M particles, mobile Rb ions, density step 3.5 % at z = 8750, box 1000 x dxi 1/64,
+  grid to R = 30, plasma r <= 5, ppc 128): QUARZ CPU and GPU, uniform (3840 cells) and stretched
+  (278 nodes, regions 0.1:0.005 1:0.01 5:0.05 30:1.0) agree with HiPACE++ (E_z amplitude, phases
+  of E_z(0), F_r(0.1), F_r(1)); small near-axis deviation in F_r(0.1) phase, probably ion motion
+  (off in HiPACE++). Stretched E_z amplitude ~3 % above uniform/HiPACE at xi < -170: check grid
+  convergence (0.05 cells at 1 < r < 5 and at the plasma edge). Timings: 16 H200 GPUs uniform
+  2560 s / stretched 391 s; 240 CPU ranks x 2 threads 8520 / 1970 s; 1 H200 ~ 118 s per sweep.
+  Fixed after his report (b6bb3b7): every rank held the whole beam (OOM with 48 ranks/node);
+  zero-weight plasma rings outside r = 5 were loaded (6x particles) and all live rings went to one
+  OpenMP thread (scaling 1.06x -> 1.83x on 2 threads). Advice: ppc 128 is far more than needed
+  for m = 0; pipeline efficiency N/(N+P-1) (240 ranks, 300 steps: 56 %); field output of the
+  uniform case is 20 GB per file -> diagnostic groups.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
@@ -138,8 +151,9 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
   no ionization energy loss.
 - No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
-- GPU: only Thomas' first speed number (~50x vs one old CPU thread). Needed for the paper: deck,
-  time per sweep GPU vs all cores of a current CPU, cmp_runs.py GPU vs CPU (TODO in the .tex).
+- GPU: Thomas' AWAKE numbers (see Status): 1 H200 ~ one 24-core Xeon 8168 socket on the old
+  code; to be re-measured after b6bb3b7. GPU per-slice work is small -> launch-bound; fused slice
+  kernels would help. Still needed for the paper: systematic GPU vs full-node CPU timing.
 
 - Paper: Alexander submits v1 to arXiv now (priority for the non-uniform radial grid); referee
   round used for items 1-3 below. The manuscript cites https://github.com/AlexMPukhov/QUARZ
