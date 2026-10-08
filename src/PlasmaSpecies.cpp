@@ -181,12 +181,19 @@ void PlasmaSpecies::load(Real z, unsigned long long seed) {
                 } else ut = uth_(r * std::cos(th), r * std::sin(th), z);
                 if (ut > 0) { px = ut * gauss(rng); py = ut * gauss(rng); pz = ut * gauss(rng); }
                 const double gam = std::sqrt(1 + px * px + py * py + pz * pz);
-                hx(i) = (ntheta_ == 1) ? r : r * std::cos(th);
-                hy(i) = (ntheta_ == 1) ? 0.0 : r * std::sin(th);
+                const double X = (ntheta_ == 1) ? r : r * std::cos(th), Y = (ntheta_ == 1) ? 0.0 : r * std::sin(th);
+                const double W = (parsed && ntheta_ > 1) ? prof_.eval(X, Y, z) * wring / ntheta_ : wring / ntheta_;
+                // rings without plasma (outside the column, e.g. plasma.rmax or a parsed profile < grid
+                // radius) are not loaded: they carry no charge and would only cost time. The random
+                // numbers above are drawn anyway, so the other particles do not change. Ionizable
+                // species keep all rings (their random numbers are keyed on the particle index).
+                if (W == 0 && !ionizable_) { --i; continue; }
+                hx(i) = X;
+                hy(i) = Y;
                 hpx(i) = px;
                 hpy(i) = py;
                 hdl(i) = gam - pz;
-                hw(i) = (parsed && ntheta_ > 1) ? prof_.eval(hx(i), hy(i), z) * wring / ntheta_ : wring / ntheta_;
+                hw(i) = W;
             }
         }
     }
@@ -196,7 +203,7 @@ void PlasmaSpecies::load(Real z, unsigned long long seed) {
     Kokkos::deep_copy(hist_, 0.0);
     Kokkos::deep_copy(lost_, 0);
     Kokkos::deep_copy(fresh_, 0);
-    Np_ = Nload_;
+    Np_ = i;   // rings with plasma (<= Nload_)
     npush_ = 0;
     xi_cur_ = 0;
     if (ionizable_) {

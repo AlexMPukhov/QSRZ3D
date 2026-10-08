@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <algorithm>
 #include <fstream>
 #include <iomanip>
 #include <random>
@@ -51,7 +52,7 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
         for (View1D* v : {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_}) *v = View1D(name + ".empty", 0);
         return;
     }
-    if (parsed_) { init_parsed(cfg); set_reference(); return; }
+    if (parsed_) { init_parsed(cfg); return; }   // reference values set by the generator
     if (analytic_) {
         // noise-free rigid beam deposited directly on the grid (no macro-particles)
         rigid_ = true;
@@ -74,7 +75,6 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
     }
     if (prof == "file") init_file(cfg.get_string(name + ".file"));
     else init_gaussian(cfg);
-    set_reference();
 }
 
 // reference gamma and xi (initial means of the whole beam, identical on all ranks): the
@@ -266,17 +266,13 @@ void Beam::init_parsed(const Config& cfg) {
             }
         }
     }
-    Np_ = static_cast<int>(X.size());
-    if (Np_ == 0) throw std::runtime_error(p + ": the parsed density is zero everywhere inside r_max / xi_range");
-    const std::vector<double>* src[7] = {&X, &Y, &PX, &PY, &PZ, &XI, &W};
-    View1D* views[7] = {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_};
-    const char* nm[7] = {".x", ".y", ".px", ".py", ".pz", ".xi", ".w"};
-    for (int c = 0; c < 7; ++c) {
-        *views[c] = View1D(p + nm[c], Np_);
-        auto hv = Kokkos::create_mirror_view(*views[c]);
-        for (int i = 0; i < Np_; ++i) hv(i) = (*src[c])[i];
-        Kokkos::deep_copy(*views[c], hv);
+    if (X.empty()) throw std::runtime_error(p + ": the parsed density is zero everywhere inside r_max / xi_range");
+    std::vector<double> all(7 * X.size());
+    for (size_t i = 0; i < X.size(); ++i) {
+        const double q[7] = {X[i], Y[i], PX[i], PY[i], PZ[i], XI[i], W[i]};
+        std::copy(q, q + 7, all.begin() + 7 * i);
     }
+    adopt_local(all);
 }
 
 void Beam::init_gaussian(const Config& cfg) {
@@ -332,14 +328,10 @@ void Beam::init_gaussian(const Config& cfg) {
     std::uniform_real_distribution<double> U01(0.0, 1.0);
     const double spx = (sr > 0) ? emit / sr : 0.0;
 
-    x_ = View1D(p + ".x", Np_); y_ = View1D(p + ".y", Np_); px_ = View1D(p + ".px", Np_);
-    py_ = View1D(p + ".py", Np_); pz_ = View1D(p + ".pz", Np_); xi_ = View1D(p + ".xi", Np_);
-    w_ = View1D(p + ".w", Np_);
-    auto hx = Kokkos::create_mirror_view(x_); auto hy = Kokkos::create_mirror_view(y_);
-    auto hpx = Kokkos::create_mirror_view(px_); auto hpy = Kokkos::create_mirror_view(py_);
-    auto hpz = Kokkos::create_mirror_view(pz_); auto hxi = Kokkos::create_mirror_view(xi_);
-    auto hw = Kokkos::create_mirror_view(w_);
-    for (int i0 = 0; i0 < Np_; i0 += nsym) {
+    const int Ntot = Np_;
+    RefAcc acc;
+    std::vector<double> local;
+    for (int i0 = 0; i0 < Ntot; i0 += nsym) {
         double x, y;
         do { x = sr * N01(rng); y = sr * N01(rng); } while (x * x + y * y > cut * cut * sr * sr);
         double xi;
@@ -355,23 +347,55 @@ void Beam::init_gaussian(const Config& cfg) {
         if (pz2 <= 0) throw std::runtime_error(p + ": gamma too small for the transverse momentum spread");
         // thermal part of the transverse momentum (the angle xp0, yp0 is not rotated)
         const double tpx = px - gam * xp0, tpy = py - gam * yp0;
+        const bool keep = local_xi(xi);
         for (int l = 0; l < nsym; ++l) {
-            const int i = i0 + l;
             const int lr = l % nrot;
             const double sgn = (l >= nrot) ? -1.0 : 1.0;   // mirrored copies: y -> -y
             const double ph = 2 * PI * lr / nrot, cp = std::cos(ph), sp = std::sin(ph);
-            hx(i) = cp * x - sp * y + cx0 + cxs * (xi - xi0);
-            hy(i) = sgn * (sp * x + cp * y) + cy0 + cys * (xi - xi0);
-            hpx(i) = cp * tpx - sp * tpy + gam * xp0;
-            hpy(i) = sgn * (sp * tpx + cp * tpy) + gam * yp0;
-            hpz(i) = std::sqrt(pz2);
-            hxi(i) = xi;
-            hw(i) = wmac;
+            const double q[7] = {cp * x - sp * y + cx0 + cxs * (xi - xi0), sgn * (sp * x + cp * y) + cy0 + cys * (xi - xi0),
+                                 cp * tpx - sp * tpy + gam * xp0, sgn * (sp * tpx + cp * tpy) + gam * yp0,
+                                 std::sqrt(pz2), xi, wmac};
+            accumulate(acc, q);
+            if (keep) local.insert(local.end(), q, q + 7);
         }
     }
-    Kokkos::deep_copy(x_, hx); Kokkos::deep_copy(y_, hy); Kokkos::deep_copy(px_, hpx);
-    Kokkos::deep_copy(py_, hpy); Kokkos::deep_copy(pz_, hpz); Kokkos::deep_copy(xi_, hxi);
-    Kokkos::deep_copy(w_, hw);
+    finish_init(local, acc);
+}
+
+bool Beam::local_xi(double xi) const {
+    // as restrict_to_local: particles outside the box stay with the first / last rank
+    const int k = slice_of(xi);
+    if (bg_.k0 > 0 && k < bg_.k0) return false;
+    if (bg_.k0 + bg_.nloc < bg_.nxi && k >= bg_.k0 + bg_.nloc) return false;
+    return true;
+}
+
+void Beam::accumulate(RefAcc& a, const double* p) const {
+    const double w = p[6];
+    ++a.n;
+    if (w == 0) return;
+    const double g = std::sqrt(1 + p[2] * p[2] + p[3] * p[3] + p[4] * p[4]);   // as in sums()
+    a.w += w;
+    a.wg += w * g;
+    a.wxi += w * p[5];
+}
+
+void Beam::finish_init(std::vector<double>& local, const RefAcc& a) {
+    np_global_ = a.n;
+    set_particles(local);
+    std::vector<double>().swap(local);
+    gref_ = 0; xiref_ = 0;
+    if (a.w > 0) { gref_ = a.wg / a.w; xiref_ = a.wxi / a.w; }
+}
+
+void Beam::adopt_local(const std::vector<double>& all) {
+    RefAcc acc;
+    std::vector<double> local;
+    for (size_t i = 0; i < all.size(); i += 7) {
+        accumulate(acc, &all[i]);
+        if (local_xi(all[i + 5])) local.insert(local.end(), all.begin() + i, all.begin() + i + 7);
+    }
+    finish_init(local, acc);
 }
 
 // text file, one particle per line:  x  y  p_x  p_y  p_z  xi  w
@@ -387,17 +411,10 @@ void Beam::init_file(const std::string& filename) {
         if (!(ss >> a[0] >> a[1] >> a[2] >> a[3] >> a[4] >> a[5] >> a[6])) continue;
         for (int c = 0; c < 7; ++c) v[c].push_back(a[c]);
     }
-    Np_ = static_cast<int>(v[0].size());
-    const std::string p = name_;
-    x_ = View1D(p + ".x", Np_); y_ = View1D(p + ".y", Np_); px_ = View1D(p + ".px", Np_);
-    py_ = View1D(p + ".py", Np_); pz_ = View1D(p + ".pz", Np_); xi_ = View1D(p + ".xi", Np_);
-    w_ = View1D(p + ".w", Np_);
-    View1D* views[7] = {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_};
-    for (int c = 0; c < 7; ++c) {
-        auto h = Kokkos::create_mirror_view(*views[c]);
-        for (int i = 0; i < Np_; ++i) h(i) = v[c][i];
-        Kokkos::deep_copy(*views[c], h);
-    }
+    std::vector<double> all(7 * v[0].size());
+    for (size_t i = 0; i < v[0].size(); ++i)
+        for (int c = 0; c < 7; ++c) all[7 * i + c] = v[c][i];
+    adopt_local(all);
 }
 
 void Beam::deposit(const View3D& src) const {

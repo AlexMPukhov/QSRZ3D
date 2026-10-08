@@ -109,8 +109,7 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     std::vector<long> nglobal;
     for (const auto& n : cfg.get_list("beams")) {
         beams_.push_back(std::make_unique<Beam>(cfg, n, *grid_, box_, m1_));
-        nglobal.push_back(beams_.back()->num_particles());
-        if (P > 1) beams_.back()->restrict_to_local();   // every rank keeps the particles of its slices
+        nglobal.push_back(beams_.back()->num_global());   // the generators keep only the local particles
     }
     outbox_.resize(beams_.size());
 
@@ -143,7 +142,7 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
         for (const auto& s : species_)
             std::cout << "Plasma species '" << s->name() << "': q = " << s->charge() << ", m = " << s->mass()
                       << (s->frozen() ? ", immobile" : (s->mobile() ? ", mobile" : ", immobile")) << ", "
-                      << s->num_particles() << " macro-particles\n";
+                      << "up to " << s->num_particles() << " macro-particles per slice (rings without plasma are skipped)\n";
         for (int i : ion_sp_) std::cout << "Species '" << species_[i]->name() << "'" << species_[i]->ion_info().description() << "\n";
         std::cout << "Neutralising immobile background: " << (neutralize_ ? "yes" : "no") << "\n";
         if (smooth_a_ > 0) {

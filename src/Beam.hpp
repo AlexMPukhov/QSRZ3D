@@ -75,6 +75,7 @@ public:
     bool rigid() const { return rigid_; }
     bool analytic() const { return analytic_; }
     int  num_particles() const { return Np_; }
+    long num_global() const { return np_global_; }   // particles of the whole beam at the start
 
 private:
     void init_gaussian(const Config& cfg);
@@ -92,6 +93,15 @@ private:
     Real q_ = -1, m_ = 1;
     double gref_ = 0, xiref_ = 0;   // reference values for the moment sums
     void set_reference();
+    // the generators draw the whole beam (same random sequence on every rank) but store only
+    // the particles of the local slices; the reference values are those of the whole beam,
+    // accumulated in generation order exactly as sums() would
+    bool local_xi(double xi) const;
+    struct RefAcc { double w = 0, wg = 0, wxi = 0; long n = 0; };
+    void accumulate(RefAcc& a, const double* p) const;   // p = x y px py pz xi w
+    void adopt_local(const std::vector<double>& all);    // whole beam (packed 7) -> local particles + refs
+    void finish_init(std::vector<double>& local, const RefAcc& a);
+    long np_global_ = 0;
     bool rigid_ = false;
     bool started_ = false;
     // analytic rigid beam: rho = q n0 exp(-|x_perp - c(xi)|^2 / 2 sigma^2) f(xi), c = centroid
