@@ -44,3 +44,11 @@ driver keys (`emit_n`, `espread`, `nparticles`) in these runs are expected.
   (speed-up 1.8 on 2 CPU ranks for 13–25 sweeps), so use the 100-step decks
   (`evo_*`, `bench_particles_s1`) for multi-GPU scaling, not the single-solve decks.
 - Report the `sweep … s` lines of the log (time per step, excluding start-up and output).
+
+## AWAKE self-modulation benchmark (Secs. "Self-modulation of a long proton bunch" and "Parallel performance")
+
+Decks by T. C. Wilson (setup of Farmer et al., IPAC'26 TUP3035; units k_p^-1 = 200 um at 7e14 cm^-3):
+`awake_uniform.in` (3840 cells) and `awake_stretched.in` (403 cells) produce Fig. fig_awake (fields
+at step 150 = 6 m; runs to 12 m); `awake_nodiags.in` is the uniform deck without output, used for
+the timings of Table tab:perf. Measured on JUWELS (2 x Xeon Platinum 8168 per node) and JUPITER
+(NVIDIA H200): 1 core 1519 s per sweep, 48 MPI ranks 35 s, 1 GPU 25 s, 16 GPUs 1.8 s per rank.

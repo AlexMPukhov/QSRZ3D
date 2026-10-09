@@ -1,0 +1,60 @@
+grid.type = uniform 
+grid.rmax = 30
+grid.dr = 7.8125e-3
+
+modes = 0
+
+xi.max = 1000
+xi.min = -1
+xi.step = 0.015625
+
+time.dt = 200
+time.start = 0
+time.steps = 300
+
+plasma.species = electrons #ions
+plasma.radial = uniform
+
+plasma.rmax = 5 # overridden by parsed profile
+plasma.neutralize = yes
+
+electrons.ppc = 128
+electrons.ntheta = 1
+electrons.density(x,y,z) = "if( (x^2+y^2) > 25, 0, if(z < 8750, 1, 1.035))"
+
+#ions.mass = 156936.0
+#ions.charge = 1
+#ions.ppc = 128
+#ions.ntheta = 1
+#ions.density(x,y,z) = "if( (x^2+y^2) > 25, 0, if(z < 8750, 1, 1.035))"
+
+beams = protons
+
+protons.charge = 1
+protons.mass = 1836.15
+protons.profile = gaussian
+protons.nparticles = 20000000
+
+protons.n0 = 0.0136
+protons.sigma_r = 1
+protons.xi0 = 253.74
+protons.sigma_xi = 253.74
+protons.xi_cut_head = 0.
+protons.gamma = 427.316
+protons.espread = 3.5e-4
+protons.emit_n = 0.01095
+
+protons.cut = 5.
+
+output.dir = out
+output.field_files = 1
+output.rmax = 1.5
+output.fields ez er bth
+output.every = 150
+output.beam_every = 0
+
+
+
+
+
+

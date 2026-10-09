@@ -1,6 +1,6 @@
 % Quasi-static PIC on non-uniform radial grids -- draft for Phys. Rev. Accel. Beams
 % Compile: pdflatex quarz_paper && pdflatex quarz_paper
-\documentclass[aps,prab,reprint,superscriptaddress,amsmath,amssymb]{revtex4-2}
+\documentclass[aps,prab,reprint,floatfix,superscriptaddress,amsmath,amssymb]{revtex4-2}
 
 \usepackage{graphicx}
 \usepackage{bm}
@@ -23,7 +23,7 @@
 \date{\today}
 
 \begin{abstract}
-We present a quasi-static particle-in-cell scheme for beam-driven plasma wakefields in $(r,\theta,\xi)$ geometry that works on an arbitrary non-uniform radial grid. The field equations are discretized with hat-function finite elements and conservative finite volumes on any monotone set of radial nodes. The transverse magnetic field is obtained explicitly, without iterations, following Baxevanis and Stupakov. An optional azimuthal mode $m=1$ captures beam offsets, tilts and hosing. The discretization keeps the discrete Gauss law exact, deposits a uniform plasma exactly on every node including the axis, and is second-order accurate on smoothly stretched grids. For a pinched low-emittance witness with mobile ions, a stretched grid of 512 cells ($5\times10^{-4}\,c/\omega_p$ on the axis) gives the near-axis focusing field to 0.03\%, whereas a uniform grid of 1600 cells has a 1.2\% error, at a third of the cost. Both grids converge at second order; for a given accuracy the stretched grid needs about 20 times fewer cells. A fine axial mesh also resolves the singular closure of a cold-plasma bubble, which a uniform grid smooths implicitly over one cell; smoothing the plasma sources over a fixed length, independent of the grid, regularizes it and makes the wake behind the closure converge. The scheme is implemented in the C++/Kokkos code QUARZ (Quasistatic Arbitrary-resolution RZ), which runs on CPUs and GPUs and uses MPI with a pipelined decomposition along $\xi$.
+We present a quasi-static particle-in-cell scheme for beam-driven plasma wakefields in $(r,\theta,\xi)$ geometry that works on an arbitrary non-uniform radial grid. The field equations are discretized with hat-function finite elements and conservative finite volumes on any monotone set of radial nodes. The transverse magnetic field is obtained explicitly, without iterations, following Baxevanis and Stupakov. An optional azimuthal mode $m=1$ captures beam offsets, tilts and hosing. The discretization keeps the discrete Gauss law exact, deposits a uniform plasma exactly on every node including the axis, and is second-order accurate on smoothly stretched grids. For a pinched low-emittance witness with mobile ions, a stretched grid of 512 cells ($5\times10^{-4}\,c/\omega_p$ on the axis) gives the near-axis focusing field to 0.03\%, whereas a uniform grid of 1600 cells has a 1.2\% error, at a third of the cost. Both grids converge at second order; for a given accuracy the stretched grid needs about 20 times fewer cells. A fine axial mesh also resolves the singular closure of a cold-plasma bubble, which a uniform grid smooths implicitly over one cell; smoothing the plasma sources over a fixed length, independent of the grid, regularizes it and makes the wake behind the closure converge. The scheme is implemented in the C++/Kokkos code QUARZ (Quasistatic Arbitrary-resolution RZ), which runs on CPUs and GPUs and uses MPI with a pipelined decomposition along $\xi$. For the self-modulation of the AWAKE proton bunch over 6~m of plasma, QUARZ reproduces the wakefield amplitude and phase of the three-dimensional code HiPACE++; a run over 12~m takes 5 to 11 minutes on 16 GPUs.
 \end{abstract}
 
 \maketitle
@@ -41,7 +41,7 @@ The contributions of this paper are:
 (i) a discretization of the quasi-static field equations on arbitrary radial nodes: hat-function volumes, a lumped-mass finite-element Laplacian for $m=0$ and conservative finite-volume operators for the vector components and for $m=1$ (Sec.~\ref{sec:disc});
 (ii) its combination with the explicit, iteration-free $\bm{B}_\perp$ solve of Baxevanis and Stupakov~\cite{Baxevanis2018}, extended to the $m=1$ mode with a short Picard iteration for the mode coupling (Secs.~\ref{sec:model}, \ref{sec:m1});
 (iii) exact discrete properties: Gauss law, uniform-plasma deposition including the axis node, and $E_z$ as the exact discrete $\xi$-derivative of $\psi$ (Sec.~\ref{sec:disc});
-(iv) a performance-portable implementation with MPI pipelining along $\xi$ (Sec.~\ref{sec:impl}) and a validation set, including a grid study for a pinched witness with ion motion (Sec.~\ref{sec:valid}).
+(iv) a performance-portable implementation with MPI pipelining along $\xi$ (Sec.~\ref{sec:impl}) and a validation set, including a grid study for a pinched witness with ion motion and a benchmark of proton-bunch self-modulation against HiPACE++ (Sec.~\ref{sec:valid}).
 
 %---------------------------------------------------------------------------
 \section{Quasi-static model}\label{sec:model}
@@ -119,7 +119,7 @@ The expansion is truncated at $m=1$. It therefore describes offsets and tilts th
 %---------------------------------------------------------------------------
 \section{Implementation and parallelization}\label{sec:impl}
 
-QUARZ is written in C++17 on Kokkos~\cite{Trott2022}, so one source compiles for OpenMP, CUDA, HIP and SYCL. Particles are stored as structures of arrays, and all particle loops are device kernels with atomic deposition. With $m=0$ a slice costs about 12 kernels and 5 tridiagonal solves; with $m=1$ and three Picard iterations, about 20 kernels and 25 solves. Host--device traffic is limited to loading the fresh plasma slice and to output. The source code of QUARZ, the input decks of all simulations in this paper and the validation suite are available at \url{https://github.com/AlexMPukhov/QUARZ}~\cite{QUARZ}. The source code of QUARZ, the validation scripts and a first draft of this manuscript were generated with the AI assistant Claude~\cite{Claude} under the direction of the authors (see Acknowledgments).
+QUARZ is written in C++17 on Kokkos~\cite{Trott2022}, so one source compiles for OpenMP, CUDA, HIP and SYCL. Particles are stored as structures of arrays, and all particle loops are device kernels with atomic deposition. With $m=0$ a slice costs about 12 kernels and 5 tridiagonal solves; with $m=1$ and three Picard iterations, about 20 kernels and 25 solves. All arithmetic is in double precision. On CPUs the tridiagonal systems are solved with the Thomas algorithm. On GPUs we use the partition method of L\'aszl\'o \textit{et al.}~\cite{Laszlo2016}: the $M$ rows are cut into $P\le 256$ chunks of at least 8 rows, each GPU thread eliminates the interior of one chunk, the $2P$ unknowns at the chunk ends form a tridiagonal system that is solved by parallel cyclic reduction in shared memory, and the interior is then recovered. Plain cyclic reduction of all $M$ rows in one thread block takes $\log_2 M$ passes through global memory; on a grid of 3841 nodes it was 4.3 times slower for the whole run (Sec.~\ref{sec:perf}). Host--device traffic is limited to loading the fresh plasma slice and to output. The source code of QUARZ, the input decks of all simulations in this paper and the validation suite are available at \url{https://github.com/AlexMPukhov/QUARZ}~\cite{QUARZ}. The source code of QUARZ, the validation scripts and a first draft of this manuscript were generated with the AI assistant Claude~\cite{Claude} under the direction of the authors (see Acknowledgments).
 
 \paragraph{MPI pipelining along $\xi$.} The box is split into $P$ contiguous blocks of slices, one per rank, with rank 0 at the head. The plasma enters at the head, so rank $r$ can sweep step $n$ only after rank $r-1$ has finished it; but rank $r-1$ can then start step $n+1$ (Fig.~\ref{fig:pipeline}). This time pipelining, used in QuickPIC~\cite{Feng2009} and HiPACE++~\cite{Diederichs2022}, gives a speed-up of $PN/(N+P-1)$ for $N$ sweeps. Once per step, rank $r$ sends rank $r+1$ a single message with: the plasma particles leaving its last slice, with their Adams--Bashforth history; $B_+$ of the last slice, used as the starting guess of the next solve; $(\rho - J_z)_b$ of the last slice, needed for the $\xi$-derivative of the beam source; and beam particles that slipped into the next block during the push ($\dd z/\dd t\le c$, so beam particles only move towards larger $\xi$).
 
@@ -160,7 +160,7 @@ For the pipeline, the beam deposit and the field gather of a slice must not invo
 %---------------------------------------------------------------------------
 \section{Validation and benchmarks}\label{sec:valid}
 
-The stretched grid reproduces every reference to the same accuracy as a fine uniform grid, and it is markedly more accurate per cell for near-axis structure. All runs used the OpenMP backend on 2 cores.
+The stretched grid reproduces every reference to the same accuracy as a fine uniform grid, and it is markedly more accurate per cell for near-axis structure. Unless stated otherwise, the runs used the OpenMP backend on 2 cores.
 
 \subsection{Verification}
 
@@ -252,16 +252,48 @@ With $a = 0.005$ (ten axis cells) the closure is resolved: the peak field is $-8
 \label{fig:closure}
 \end{figure*}
 
-\subsection{Parallel runs}
+\subsection{Self-modulation of a long proton bunch}\label{sec:awake}
 
-MPI runs were compared file by file with serial runs that use the same nearest-slice beam assignment. Runs without beam particles crossing rank boundaries are bit-identical (witness gain, ion motion, parsed profiles, analytic offset driver with $m=1$). When particles move between ranks, their order in memory changes and the results differ at round-off level: $10^{-10}$ in the fields for hosing ($m=1$, 12 steps) and $5\times10^{-8}$ for a $\gamma=5$ beam slipping through all ranks. On 2 CPU cores the speed-up is 1.77--1.83 for 13--25 sweeps, against 1.86--1.92 for an ideal pipeline. On a GPU of the NVIDIA Blackwell generation (GB202), a run is about 50 times faster than on a single thread of an Intel Xeon E5620 CPU.
-% TODO (T.C.W.): name the test case (deck from paper/inputs), give the time per sweep on GPU and CPU,
-% and add a comparison with all cores of a current CPU node; state that the code runs in double precision.
+As a benchmark at experimental scale, we simulate the seeded self-modulation of the proton bunch in the first plasma cell of AWAKE Run~2, following the code comparison of Farmer \textit{et al.}~\cite{Farmer2026}. The plasma has the density $n_0 = 7\times10^{14}\,\mathrm{cm^{-3}}$ ($k_p^{-1} = 200\,\mu$m, $E_0 = mc\omega_p/e = 2.5$~GV/m), radius $5\,k_p^{-1}$ (1~mm) and immobile ions. A density step of $+3.5\%$ at $z = 1.75$~m stabilizes the wakefield. The bunch contains $3\times10^{11}$ protons of 400~GeV ($\gamma = 427.3$, relative energy spread $3.5\times10^{-4}$) with normalized emittance $2.2\,\mu$m. It is a Gaussian with $\sigma_r = k_p^{-1}$ and $\sigma_z = 253.7\,k_p^{-1}$ (5.1~cm, 170~ps), cut at one $\sigma_z$ ahead of its centre; the sharp front seeds the self-modulation, as the relativistic ionization front does in the experiment. Its peak density is $n_b \approx 0.014\,n_0$.
+
+The box is $1000\,k_p^{-1}$ long with $\Delta\xi = 1/64$ (64\,064 slices), the conducting wall is at $R = 30\,k_p^{-1}$, and the bunch is represented by $2\times10^7$ macro-particles, pushed with $\Delta t = 200\,\omega_p^{-1}$. The plasma is loaded with 128 rings per cell. We use two radial grids: a uniform one with $\Delta r = 1/128$ (3840 cells), and a stretched one with spacings 0.005 for $r<0.1$, 0.01 for $r<1$ and 0.02 up to the plasma edge, growing to 1 at the wall with a neighbour ratio $\le 1.05$ (403 cells). Both are run on CPUs and on GPUs.
+
+Figure~\ref{fig:awake} compares the fields after 6~m of propagation with HiPACE++. The on-axis $E_z$ grows along the bunch to $0.23\,E_0$ and agrees with HiPACE++ over the whole bunch. Panel (b) shows the phase of three fields, obtained from their zero crossings relative to a harmonic wave~\cite{Farmer2026}: $E_z$ on the axis and the transverse force $F_r = E_r - B_\theta$ at $r = 0.1$ and $1\,k_p^{-1}$. For $E_z(0)$ and $F_r(1)$ the phases of QUARZ and HiPACE++ agree to about 0.1~rad over 250~$k_p^{-1}$, i.e.\ about 40 wavelengths. $F_r$ close to the axis is the most sensitive diagnostic: there the front of the bunch is torn apart by the nonlinear near-axis focusing~\cite{Farmer2026}. Its phase follows HiPACE++ for $\xi > -130$, but differs by up to 0.4~rad between $\xi = -210$ and $-130$. The four QUARZ runs agree among one another to the width of the lines, although their radial cells at $r = 0.1$ differ by a factor of 1.6 and they run on different hardware, so the difference is not a radial-resolution effect of QUARZ. It may come from the different transverse sampling of the near-axis protons in a three-dimensional Cartesian and in an axisymmetric code; a resolution study of this region in both codes is under way.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figs/fig_awake.png}
+\caption{Self-modulation of the AWAKE proton bunch after 6~m of plasma: QUARZ on uniform (3840 cells) and stretched (403 cells) radial grids, on CPUs and GPUs, compared with HiPACE++. (a) $E_z$ on the axis, with the head of the bunch at $\xi = 0$. (b) Phase of $E_z(r=0)$ and of the transverse force $F_r = E_r - B_\theta$ at $r = 0.1$ and $1\,k_p^{-1}$, from the zero crossings of the fields. Saturated lines: HiPACE++; light lines: the four QUARZ runs.}
+\label{fig:awake}
+\end{figure}
+
+\subsection{Parallel performance}\label{sec:perf}
+
+MPI runs were compared file by file with serial runs that use the same nearest-slice beam assignment. Runs without beam particles crossing rank boundaries are bit-identical (witness gain, ion motion, parsed profiles, analytic offset driver with $m=1$). When particles move between ranks, their order in memory changes and the results differ at round-off level: $10^{-10}$ in the fields for hosing ($m=1$, 12 steps) and $5\times10^{-8}$ for a $\gamma=5$ beam slipping through all ranks. On 2 CPU cores the speed-up is 1.77--1.83 for 13--25 sweeps, against 1.86--1.92 for an ideal pipeline.
+
+Larger runs were timed with the AWAKE case of Sec.~\ref{sec:awake} on the uniform grid, without output, on the supercomputers JUWELS (nodes with two 24-core Intel Xeon Platinum 8168 CPUs) and JUPITER (nodes with four NVIDIA H200 GPUs). Table~\ref{tab:perf} gives the wall-clock time of one sweep through the box, per rank, i.e.\ the work of a full sweep divided among the ranks. With one MPI rank per core, a JUWELS node is 43 times faster than a single core, an efficiency of 90\%. On GPUs the scaling is ideal up to 16 devices, the largest number tested. One GPU does a sweep in 25~s, 60 times faster than one CPU core and 1.4 times faster than a full 48-core node. Threading within a rank is less efficient: 24 OpenMP threads are only 5.5 times faster than one, so on CPUs we run one MPI rank per core.
+
+\begin{table}[t]
+\caption{Wall-clock time of one sweep per rank (s), AWAKE case of Sec.~\ref{sec:awake} on the uniform grid (3840 cells, 64\,064 slices, $2\times10^7$ beam particles). CPU: JUWELS (Intel Xeon Platinum 8168, 48 cores per node); GPU: NVIDIA H200 (JUPITER).}
+\label{tab:perf}
+\begin{ruledtabular}
+\begin{tabular}{lrrrrr}
+CPU cores & 1 & 6 & 12 & 24 & 48 \\
+MPI ranks & 1519 & 246 & 125 & 64 & 35 \\
+OpenMP threads & 1519 & 444 & 327 & 277 & 83\footnotemark[1] \\ \hline
+GPUs & 1 & 2 & 4 & 8 & 16 \\
+MPI ranks & 25 & 13 & 6.5 & 3.4 & 1.8 \\
+\end{tabular}
+\end{ruledtabular}
+\footnotetext[1]{2 MPI ranks with 24 threads each, one per socket.}
+\end{table}
+
+The full runs of Fig.~\ref{fig:awake} (301 sweeps up to 12~m, with field output) took 667~s on the uniform and 319~s on the stretched grid with 16 GPUs, and 3900~s and 1530~s on 384 CPU cores (8 JUWELS nodes). The stretched grid has ten times fewer cells, but the run is only 2--2.5 times faster: it has half as many plasma particles, and these dominate its cost. With 384 ranks each rank holds only 167 slices, and the pipeline fill limits the efficiency to $N/(N+P-1) = 44\%$ for $N = 301$ sweeps; 16 GPUs work at 95\%.
 
 %---------------------------------------------------------------------------
 \section{Conclusions}
 
-A quasi-static RZ scheme can run on any monotone radial grid without losing the properties that make uniform-grid codes robust: exact discrete Gauss law, exact uniform-plasma deposition on the axis, second-order accuracy and an iteration-free $\bm{B}_\perp$ solve. The cost per slice stays linear in the number of cells, so resolution can be spent where the physics needs it. For a pinched witness with ion motion this gives 10--90 times smaller errors than a uniform grid at a third of the cost, or the same accuracy with 20 times fewer cells. The same operators carry over to the $m=1$ mode, and the code scales across CPU cores and GPUs through pipelining along $\xi$.
+A quasi-static RZ scheme can run on any monotone radial grid without losing the properties that make uniform-grid codes robust: exact discrete Gauss law, exact uniform-plasma deposition on the axis, second-order accuracy and an iteration-free $\bm{B}_\perp$ solve. The cost per slice stays linear in the number of cells, so resolution can be spent where the physics needs it. For a pinched witness with ion motion this gives 10--90 times smaller errors than a uniform grid at a third of the cost, or the same accuracy with 20 times fewer cells. The same operators carry over to the $m=1$ mode, and the code scales across CPU cores and GPUs through pipelining along $\xi$. For the self-modulation of the AWAKE proton bunch, QUARZ agrees with HiPACE++ in the amplitude and phase of the wakefield over 40 plasma wavelengths, and 16 GPUs follow the bunch over 12~m in 5 to 11 minutes.
 
 A fine axial mesh also exposes the singular closure of a cold-plasma bubble, which uniform grids hide by smoothing it over one cell. An explicit smoothing of the plasma sources over a length chosen independently of the grid regularizes it; the wake behind the closure then converges, and the model changes only at order of the smoothing length.
 
@@ -269,7 +301,7 @@ The code already contains a laser envelope solver on the same grid (a complex tr
 
 %---------------------------------------------------------------------------
 \begin{acknowledgments}
-The QUARZ source code, its validation suite, the simulations and figures of Sec.~\ref{sec:valid}, and a first draft of this manuscript were produced with the large language model Claude (Anthropic; model identifier \texttt{claude-opus-5-5})~\cite{Claude}, working under the direction of A.P. T.C.W. tested the code. The authors reviewed and edited the text and take full responsibility for the content of this article. Claude is not an author, because it cannot take responsibility for the work.
+The QUARZ source code, its validation suite, the simulations and figures of Sec.~\ref{sec:valid}, and a first draft of this manuscript were produced with the large language model Claude (Anthropic; model identifier \texttt{claude-opus-5-5})~\cite{Claude}, working under the direction of A.P. T.C.W. tested the code and performed the simulations and timings of Secs.~\ref{sec:awake} and \ref{sec:perf}, including the HiPACE++ runs. We thank J.~P.~Farmer for the AWAKE simulation setup. Computing time on JUWELS and JUPITER was provided by the J\"ulich Supercomputing Centre. The authors reviewed and edited the text and take full responsibility for the content of this article. Claude is not an author, because it cannot take responsibility for the work.
 \end{acknowledgments}
 
 \begin{thebibliography}{99}
@@ -292,6 +324,8 @@ The QUARZ source code, its validation suite, the simulations and figures of Sec.
 \bibitem{Trott2022} C. R. Trott \textit{et al.}, Kokkos 3: Programming model extensions for the exascale era, IEEE Trans. Parallel Distrib. Syst. \textbf{33}, 805 (2022).
 \bibitem{QUARZ} A. Pukhov and T. C. Wilson, QUARZ: Quasistatic Arbitrary-resolution RZ code, \url{https://github.com/AlexMPukhov/QUARZ} (2026).
 \bibitem{Claude} Anthropic, Claude, large language model (model \texttt{claude-opus-5-5}), \url{https://www.anthropic.com/claude}, used in October 2026.
+\bibitem{Laszlo2016} E. L\'aszl\'o, M. Giles, and J. Appleyard, Manycore algorithms for batch scalar and block tridiagonal solvers, ACM Trans. Math. Softw. \textbf{42}, 31 (2016).
+\bibitem{Farmer2026} J. P. Farmer, T. Wilson, A. Pukhov, M. Moreira, M. Turner, E. Gschwendtner, and C. Amoedo (AWAKE Collaboration), Nonlinear transverse beam dynamics in AWAKE Run 2c, in \textit{Proc. IPAC'26}, paper TUP3035, \url{https://www.ipac26.org/prepress/pdf/TUP3035.pdf} (2026).
 \bibitem{Feng2009} B. Feng \textit{et al.}, Enhancing parallel quasi-static particle-in-cell simulations with a pipelining algorithm, J. Comput. Phys. \textbf{228}, 5340 (2009).
 \end{thebibliography}
 
