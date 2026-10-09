@@ -171,6 +171,13 @@ Done and validated (README §7, `validation/reference_full.txt`):
   adapt_rank_*.txt. Laser + adaptive refused. Section 16 (adaptive_ramp.in, adaptive_decel.in,
   adaptive_check.py): dt formula 6e-10, ramp ODE 1.0 %, 2304 vs 4220 steps; lag 6 overshoot 5 %
   only in the first lag steps; restart and 2-rank runs bit-identical.
+- Paper, John Farmer's comments (2026-10-09): abstract rewritten without number lists; the pinched-
+  witness result reframed as SAME axis resolution -> same answer, 30x faster: uniform dr = 5e-4
+  (16000 cells, deck paper/inputs/conv_u0.0005.in) vs stretched 512 cells: n_i(0), W_r agree 1-4e-5,
+  E_z 1e-3 (sheath resolution 0.01); 36.6 s vs 1.2 s per sweep on 2 cores. Row added to Table pinch.
+- Pitfall (2026-10-09): disk allowance full -> runs died (SIGBUS) and left /dev/shm/sem.OMPIO_*;
+  afterwards every run hung in MPI_File_open (sharedfp sem_wait). Fix: rm /dev/shm/sem.OMPIO_*.
+  Old scratch runs in /tmp/claude-0 (sub, rst, mem: 16 GB) were deleted.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
