@@ -118,3 +118,21 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2], max rel diff 0.00e+00
   group 'light': 2 field files, 0 beam files = exact subsets of the main output; size 1.8 % of the corresponding main files  OK
  openPMD group (E_z, psi, witness every 5th particle, every 2nd slice):
   openPMD group: meshes ['E.z', 'psi'], species ['witness'], 901 slices, 40000 particles  OK
+== 16. adaptive time step ==
+ ion channel, density 1 -> 4, gamma 1000, 128 steps per betatron period:
+  680 steps, dt 0.833 ... 2.195: max |dt/dt_formula - 1| = 5.6e-10 (all but the last 2, which land on t_end)
+  r_rms/r0 vs |f(t)| of the ODE: max deviation 2.99e-03;  run ends at t = 1200.000000 (t_end 1200)
+ decelerating witness (gamma 50 -> 6), 32 steps per period, gamma known 1 and 6 steps late:
+  lag 1: 37 steps, gamma_eff 23.27 ... 49.56: max dt / dt(true gamma at t_n+1) = 1.0045, after the first 1 steps 0.9999
+  lag 6: 37 steps, gamma_eff 23.25 ... 49.56: max dt / dt(true gamma at t_n+1) = 1.0526, after the first 6 steps 1.0003
+  gamma_mean max rel. diff 5.41e-04, r_rms 1.78e-02  (38 vs 38 steps)
+ serial restart (expected: bit-identical):
+  14 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ 2 ranks (lag 3) vs serial with lag 3 (expected: fields and particles bit-identical, beam log sums round-off; same time steps):
+  axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
+  beamlog  max rel diff 4.19e-13  (beams.txt col 7)
+  dumps    max rel diff 0.00e+00  (beam_driver_000000.bin:x)
+  fields   max rel diff 0.00e+00  (fields_000000.bin:psi)
+  timestep.txt identical  OK
+ 2 ranks, restart (expected: bit-identical):
+  14 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK

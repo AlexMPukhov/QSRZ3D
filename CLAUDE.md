@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -158,6 +158,19 @@ Done and validated (README §7, `validation/reference_full.txt`):
   ~0.65 ms per slice of non-kernel host time on 1 thread (~40 s per full sweep, does not scale).
   Description of his benchmark says density step at 75 cm, but the deck has z < 8750 k_p^-1
   = 1.76 m (k_p^-1 = 201 um at 7e14); sigma_z written as 253.74 um, should be k_p^-1 (5.1 cm).
+- adaptive time step (2026-10-09, Tom's suggestion, like HiPACE++): `time.adaptive`, nt_per_betatron
+  (20), dt_max/dt_min, adaptive_gamma_min (2), adaptive_density, adaptive_lag (default P+1, serial 1),
+  `time.t_end` (lands exactly; also without adaptive), `<beam>.adaptive_dt`. Rank 0 chooses dt_n and
+  the last-step flag, sent in the pipeline message header [n, dt, last]. gamma_eff = min max(gamma,
+  gmin) m/|q| over non-rigid beams; each rank isend_small's its min after the push of step m to rank 0
+  (tag 31000 + m % 1500); rank 0 uses m = n - lag (blocking recv, normally no wait), extrapolates a
+  decreasing gamma linearly. n_max = max density at the BOX HEAD over the step (the QS model gives
+  the whole box the head density: z_front = t - xi_min; found when the ramp ODE matched only with
+  z = t - xi_min). Variable-step leapfrog (kick (dt_prev+dt)/2, drift dt), identical bit for bit for
+  constant dt (quick suite unchanged). Logs timestep.txt, gamma_records.txt; checkpoint adds
+  adapt_rank_*.txt. Laser + adaptive refused. Section 16 (adaptive_ramp.in, adaptive_decel.in,
+  adaptive_check.py): dt formula 6e-10, ramp ODE 1.0 %, 2304 vs 4220 steps; lag 6 overshoot 5 %
+  only in the first lag steps; restart and 2-rank runs bit-identical.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
@@ -206,6 +219,10 @@ envelope; beams from openPMD files, warm plasma, Python/PICMI interface;
 GPU benchmark vs a full current CPU node, fused slice kernels; Bethe data beyond Ar.
 
 ## Earlier proposals
+- Plasma longitudinal profile: QUARZ gives the whole box the density at the box head (z = t - xi_min),
+  not n(t - xi) per slice. Fine for boxes short compared with the density scale; for AWAKE (box
+  1000 = 20 cm, step at 1.76 m) the tail sees the step 20 cm early. Check how HiPACE++/LCODE do it;
+  per-slice density needs electrons and ions consistent (weights changing with xi).
 - Convert trapped plasma electrons into beam particles (charge w * dt per step) so that
   ionization injection can be followed through acceleration.
 - Benedetti phase-corrected envelope; m = 1 laser envelope.

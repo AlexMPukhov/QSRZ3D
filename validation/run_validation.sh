@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..15 (default: all)
+#   sections   numbers 1..16 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 15)}
+SECTIONS=${*:-$(seq 1 16)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -307,6 +307,40 @@ sec15() {
     fi
     unset OMP_NUM_THREADS
     rm -rf out_rs_* out_grp*
+}
+
+sec16() {
+    echo "== 16. adaptive time step =="
+    local T=$(q 3000 1200)
+    $QS adaptive_ramp.in time.t_end=$T > /dev/null
+    echo " ion channel, density 1 -> 4, gamma 1000, 128 steps per betatron period:"
+    python3 adaptive_check.py ramp out_adapt_ramp 128 1000 1.5 0 3 $T
+    local D="adaptive_decel.in time.t_end=$(q 100 60)"
+    $QS $D time.adaptive_lag=1 output.dir=out_ad_l1 > /dev/null
+    $QS $D time.adaptive_lag=6 output.dir=out_ad_l6 > /dev/null
+    echo " decelerating witness (gamma 50 -> 6), 32 steps per period, gamma known 1 and 6 steps late:"
+    python3 adaptive_check.py safe out_ad_l1 32 1
+    python3 adaptive_check.py safe out_ad_l6 32 6
+    python3 adaptive_check.py compare out_ad_l6 out_ad_l1
+    # MPI and restart: one OpenMP thread (bit-identity)
+    export OMP_NUM_THREADS=1
+    local M="adaptive_decel.in time.t_end=40 output.every=5 output.beam_every=5"
+    $QS $M time.adaptive_lag=3 checkpoint.every=6 checkpoint.keep=0 checkpoint.dir=out_ad_chkA output.dir=out_ad_A > /dev/null
+    $QS $M time.adaptive_lag=3 restart.from=out_ad_chkA/chk_000006 output.dir=out_ad_B > /dev/null
+    echo " serial restart (expected: bit-identical):"
+    python3 restart_check.py out_ad_A out_ad_B 0 || true
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 2 $QS $M checkpoint.every=6 checkpoint.keep=0 checkpoint.dir=out_ad_chkP output.dir=out_ad_PA > /dev/null
+        echo " 2 ranks (lag 3) vs serial with lag 3 (expected: fields and particles bit-identical, beam log sums round-off; same time steps):"
+        python3 cmp_runs.py out_ad_A out_ad_PA 1e-12 || true
+        if diff <(grep -v "^#" out_ad_A/timestep.txt) <(grep -v "^#" out_ad_PA/timestep.txt) > /dev/null; then
+            echo "  timestep.txt identical  OK"; else echo "  timestep.txt differs  FAIL"; fi
+        $MPIRUN 2 $QS $M restart.from=out_ad_chkP/chk_000006 output.dir=out_ad_PB > /dev/null
+        echo " 2 ranks, restart (expected: bit-identical):"
+        python3 restart_check.py out_ad_PA out_ad_PB 0 || true
+    fi
+    unset OMP_NUM_THREADS
+    rm -rf out_adapt_ramp out_ad_*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

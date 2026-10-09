@@ -293,10 +293,15 @@ double Simulation::choose_dt(int n, bool& last) {
                 const double tau = t_ + (have_prev_ ? dt_prev_ : 0.0) - thist_.at(m + 1);
                 if (rate < 0 && tau > 0) gam = std::max(0.5 * G, G + rate * tau);
             }
-            const double dpre = have_prev_ ? dt_prev_ : 0.0;
-            const double xmax = box_.xi_min + (box_.nxi - 1) * box_.dxi;
-            const double nmax = plasma_density_max(t_ - xmax, t_ + dpre - box_.xi_min);
-            dt = nmax > 0 ? (6.283185307179586 / nbeta_) * std::sqrt(2 * gam / nmax) : dt_max_;
+            // the plasma of the whole box has the density at the box head, z = t - xi_min (see
+            // step_fields); the maximum over the head positions of this step, [t_n, t_n + dt]:
+            // first with dt = dt_{n-1}, then once more with the dt found
+            const double zh = t_ - box_.xi_min, cnst = 6.283185307179586 / nbeta_;
+            auto dt_of = [&](double nm) { return nm > 0 ? cnst * std::sqrt(2 * gam / nm) : dt_max_; };
+            double nmax = plasma_density_max(zh, zh + std::min(have_prev_ ? dt_prev_ : 0.0, dt_max_));
+            dt = std::min(dt_max_, dt_of(nmax));
+            const double n2 = plasma_density_max(zh, zh + dt);
+            if (n2 > nmax) { nmax = n2; dt = std::min(dt, dt_of(nmax)); }
             last_dens_ = nmax;
         } else dt = dt_max_;
         last_gamma_ = gam;

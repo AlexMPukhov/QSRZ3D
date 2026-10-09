@@ -164,7 +164,8 @@ private:
     // ---- time step: fixed or adaptive (time.adaptive), end by step count or time.t_end
     // Rank 0 chooses dt_n (and whether step n is the last) and sends it down the pipeline with
     // the step-n message. Adaptive: dt_n = (2 pi / time.nt_per_betatron) / omega_beta with
-    // omega_beta^2 = n_max / (2 gamma_eff), gamma_eff = min over beams of max(gamma, gmin) m/|q|.
+    // omega_beta^2 = n_max / (2 gamma_eff), gamma_eff = min over beams of max(gamma, gmin) m/|q|,
+    // n_max = max plasma density at the box head (the density the whole box sees) during the step.
     // gamma_eff is known globally only with a lag: every rank sends its local minimum after the
     // push of step m to rank 0 (small messages against the pipeline), which uses step m = n - lag
     // (lag >= P, default P + 1, so that rank 0 does not wait), extrapolated to t_{n+1} if it

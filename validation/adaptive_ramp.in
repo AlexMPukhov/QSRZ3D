@@ -1,0 +1,27 @@
+# Adaptive time step: betatron oscillation of a zero-emittance witness in a pure ion channel
+# whose density rises from 1 to 4 (z = 500 ... 1500). dt follows 2 pi / (N omega_beta(z)).
+grid.type = regions
+grid.rmax = 4
+grid.regions = 0.3:0.002 4:0.02
+grid.max_ratio = 1.05
+xi.min = 0
+xi.max = 3
+xi.step = 0.02
+time.adaptive = 1
+time.nt_per_betatron = 128
+time.t_end = 3000
+plasma.species = ions
+ions.charge = 1
+ions.mass = 1836
+ions.mobile = 0
+ions.density(x,y,z) = "1 + 3*min(max(z - 500, 0)/1000, 1)"
+beams = witness
+witness.n0 = 1e-4
+witness.sigma_r = 0.1
+witness.sigma_xi = 0.02
+witness.xi0 = 1.5
+witness.gamma = 1000
+witness.emit_n = 0
+witness.nparticles = 20000
+output.dir = out_adapt_ramp
+output.every = 0

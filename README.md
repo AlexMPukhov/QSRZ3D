@@ -575,7 +575,15 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `modes` | 0 | 0 = axisymmetric (m = 0), 1 = modes m = 0 and 1 |
 | `solver.picard` | 3 (modes=1) | Picard iterations for the χ₁ mode coupling of B⊥ |
 | `xi.min`, `xi.max`, `xi.step` | 0, —, — | box and slice spacing Δξ |
-| `time.dt`, `time.steps`, `time.start` | 0, 0, 0 | beam time step and number of steps (0 = one quasi-static solve) |
+| `time.dt`, `time.steps`, `time.start` | 0, 0, 0 | beam time step and number of steps (0 = one quasi-static solve). With `time.adaptive`, `time.dt` (if given) is the largest step |
+| `time.t_end` | — | end the run at this time instead of after `time.steps` steps (then only an upper bound); the last step is shortened to land on it exactly, without a tiny final step |
+| `time.adaptive` | 0 | adaptive beam time step from the betatron period, see below |
+| `time.nt_per_betatron` | 20 | steps per betatron period, 2π/(ω_β Δt) |
+| `time.dt_max`, `time.dt_min` | `time.dt` or ∞, 0 | bounds of the adaptive step |
+| `time.adaptive_gamma_min` | 2 | particles with smaller γ count as this γ (slow particles do not stall the run) |
+| `time.adaptive_density` | from the profiles | density n for ω_β (overrides the profiles) |
+| `time.adaptive_lag` | P + 1 (1 serial) | steps by which rank 0 knows γ late (≥ number of ranks P) |
+| `<beam>.adaptive_dt` | 1 | include this beam in the adaptive step (rigid beams never count) |
 | `pusher.ab_order` | 3 | Adams–Bashforth order 1–5 for plasma rings. 2–3 is most robust at bubble closure; 5 can blow up there. |
 | `pusher.delta_min` | 10⁻³ | rings with γ − p_z below this are removed (trapped) |
 | `pusher.max_qsa_factor` | 35 | rings with γ/(γ − p_z) above this are removed (trapped; the quasi-static weight diverges) |
@@ -650,6 +658,24 @@ Errors name the position, e.g. `parser: unknown symbol 'q' … at position 2 in 
 | `laser.focus` | 0 | distance from the initial position to the focal plane (> 0: the pulse is still converging) |
 | `laser.polarization` | `linear` | `linear` (⟨a²⟩ = \|â\|²/2) or `circular` (⟨a²⟩ = \|â\|²) |
 | `units.n0_cm3` | — | plasma density (needed with `laser.lambda0_um`; also gives SI units in openPMD output) |
+
+**Adaptive time step** (`time.adaptive = 1`). Before step n, rank 0 sets
+Δt_n = (2π/N) / ω_β with N = `time.nt_per_betatron`, ω_β² = n_max/(2γ_eff),
+γ_eff = min over the particles of all non-rigid beams of max(γ, `adaptive_gamma_min`)·m/|q|
+(ω_β² = (|q|/m) n/(2γ)), and n_max the largest plasma density at the box head during the step
+(the quasi-static model gives the whole box the density at its head; electron species, or the
+charge density of the positive species in a pure ion channel), clamped to [`dt_min`, `dt_max`].
+With MPI, γ_eff is known globally only with a delay: every rank sends its minimum after the push
+of step m to rank 0 (small messages against the pipeline), which uses step m = n − lag with
+lag ≥ P (default P + 1, so that rank 0 does not wait for the tail). A decreasing γ_eff is
+extrapolated linearly to t_{n+1}; an increasing one is not (the lagged value is then the
+conservative one). During the first lag steps no rate is known yet. The step is sent down the
+pipeline with the step-n message, so all ranks use the same Δt_n and the result does not
+depend on timing: a serial run with the same `time.adaptive_lag` is bit-identical to an MPI run.
+The beam leapfrog takes variable steps (kick (Δt_{n−1} + Δt_n)/2, drift Δt_n); with a constant
+step it is the usual scheme, bit for bit. Output: `timestep.txt` (step, t, Δt, γ_eff, n_max) and
+`gamma_records.txt` (true global γ_eff after every push, for checking). Checkpoints carry the
+state (`adapt_rank_*.txt`). Not available with a laser (fixed step of the envelope solver).
 
 The time step `time.dt` is shared with the beams. The laser accuracy is
 controlled by Δt relative to the Rayleigh length k₀w0²/2 and to the
@@ -900,7 +926,7 @@ All results can be reproduced with `validation/run_validation.sh`:
 
 ```bash
 cd validation
-./run_validation.sh -j 4 -c          # full suite (sections 1-12), compared with reference_full.txt
+./run_validation.sh -j 4 -c          # full suite (sections 1-16), compared with reference_full.txt
 ./run_validation.sh -q -j 4 -c       # quick regression test after code changes (~2 min on 2 cores)
 ./run_validation.sh -c 9 10          # selected sections only
 ```
@@ -917,7 +943,7 @@ and no self-focusing in section 11); its numbers are for regression only, the ph
 quoted below are from the full mode. After a deliberate change of results, check them and store
 the new reference with `-u` (all or selected sections).
 
-Timing on 2 cores: full mode 9.5 min in sequence or 6 min with `-j 2`; quick mode 2 min with `-j 2`.
+Timing on 2 cores: full mode 9.5 min in sequence or 6 min with `-j 2`; quick mode about 4.5 min with `-j 2` (16 sections).
 A planted bug (π changed by 0.3 %) is caught by the quick mode in 4 of 6 sections tested.
 
 | test | result |
@@ -1025,6 +1051,15 @@ files with the main output):
 | `checkpoint.keep = 2`, a checkpoint every step | the two newest kept |
 | Group: ez ψ n_e, r ≤ 1, every 3rd slice, witness every 7th particle (serial); ez B_θ, r ≤ 0.5, every 4th slice (3 ranks) | exact subsets of the main output; 5.9 % and 1.8 % of its size |
 | openPMD group (JSON): E_z, ψ, witness every 5th particle, every 2nd slice | only mesh E (component z), ψ and species witness; 901 slices, 40 000 particles |
+
+**Adaptive time step** (section 16, `adaptive_check.py`):
+
+| test | result |
+|---|---|
+| Ion channel, n = 1 → 4 (z = 500…1500), γ = 1000, 128 steps per period, `t_end` = 3000 | every Δt equals (2π/N)/ω_β(n_max) to 6·10⁻¹⁰ (independent recomputation; Δt 2.20 → 0.71); r_rms/r₀ follows the ODE f'' = −n f/(2γ) to 1.0 % (a fixed Δt = 0.25 gives 0.5 %); 2304 steps instead of 4220 with the smallest Δt; ends at t = 3000 exactly |
+| Decelerating witness inside a rigid driver, γ 50 → 6, 32 steps per period, lag 1 and 6 | after the first lag steps, Δt ≤ 1.0003 × the step from the true γ at t_{n+1} (extrapolation works); during the first 6 steps up to 1.053 × (no rate known yet) |
+| Restart (serial; 2 ranks → 2 ranks) | bit-identical, incl. `timestep.txt` |
+| 2 ranks (lag 3) vs serial with lag 3 | fields and particles bit-identical, same Δt sequence |
 
 **MPI vs serial** (`validation/cmp_runs.py` compares every output file; serial runs with
 `beams.xi_shape = ngp`, one OpenMP thread per rank, 2 cores; P = 3, 4 oversubscribed):
