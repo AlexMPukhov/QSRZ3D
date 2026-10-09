@@ -663,7 +663,7 @@ Errors name the position, e.g. `parser: unknown symbol 'q' … at position 2 in 
 Δt_n = (2π/N) / ω_β with N = `time.nt_per_betatron`, ω_β² = n_max/(2γ_eff),
 γ_eff = min over the particles of all non-rigid beams of max(γ, `adaptive_gamma_min`)·m/|q|
 (ω_β² = (|q|/m) n/(2γ)), and n_max the largest plasma density at the box head during the step
-(the quasi-static model gives the whole box the density at its head; electron species, or the
+(the quasi-static model takes the position z as the slow coordinate, so the plasma density of the whole box is the one at its head; electron species, or the
 charge density of the positive species in a pure ion channel), clamped to [`dt_min`, `dt_max`].
 With MPI, γ_eff is known globally only with a delay: every rank sends its minimum after the push
 of step m to rank 0 (small messages against the pipeline), which uses step m = n − lag with

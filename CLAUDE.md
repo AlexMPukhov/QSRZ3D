@@ -175,6 +175,11 @@ Done and validated (README §7, `validation/reference_full.txt`):
   witness result reframed as SAME axis resolution -> same answer, 30x faster: uniform dr = 5e-4
   (16000 cells, deck paper/inputs/conv_u0.0005.in) vs stretched 512 cells: n_i(0), W_r agree 1-4e-5,
   E_z 1e-3 (sheath resolution 0.01); 36.6 s vs 1.2 s per sweep on 2 cores. Row added to Table pinch.
+- Plasma density at the box head for the whole box (z = t - xi_min) is CORRECT, not an
+  approximation (Alexander, 2026-10-09; see his GEM-PIC paper): the QS method takes z as the slow
+  coordinate (variables xi = t - z, z); n(z) then belongs to the box front. Density varying inside
+  the box only makes sense with slow time tau = t AND the slow-time derivative kept (GEM-PIC);
+  once it is dropped, as in QS, the difference disappears. Do not "fix" this.
 - Pitfall (2026-10-09): disk allowance full -> runs died (SIGBUS) and left /dev/shm/sem.OMPIO_*;
   afterwards every run hung in MPI_File_open (sharedfp sem_wait). Fix: rm /dev/shm/sem.OMPIO_*.
   Old scratch runs in /tmp/claude-0 (sub, rst, mem: 16 GB) were deleted.
@@ -226,10 +231,6 @@ envelope; beams from openPMD files, warm plasma, Python/PICMI interface;
 GPU benchmark vs a full current CPU node, fused slice kernels; Bethe data beyond Ar.
 
 ## Earlier proposals
-- Plasma longitudinal profile: QUARZ gives the whole box the density at the box head (z = t - xi_min),
-  not n(t - xi) per slice. Fine for boxes short compared with the density scale; for AWAKE (box
-  1000 = 20 cm, step at 1.76 m) the tail sees the step 20 cm early. Check how HiPACE++/LCODE do it;
-  per-slice density needs electrons and ions consistent (weights changing with xi).
 - Convert trapped plasma electrons into beam particles (charge w * dt per step) so that
   ionization injection can be followed through acceleration.
 - Benedetti phase-corrected envelope; m = 1 laser envelope.
