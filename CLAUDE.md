@@ -144,6 +144,15 @@ Done and validated (README §7, `validation/reference_full.txt`):
   paper/inputs/README; now corrected to close/cores) and fork/join wake-up (~25 regions per slice).
   Asked for kernel-timer profiles (1 vs 24 threads, GPU uniform vs stretched).
   `grid.type = stretched` accepted as alias of regions (Thomas' deck uses it).
+  RESULT with partition (Thomas, 2026-10-09 afternoon): H200 1/2/4/8/16 GPUs 25/13/6.5/3.4/1.8
+  s/sweep (4.3x faster, still ideal scaling; 1 H200 ~ 1.4 JUWELS nodes of 48 MPI ranks, 35 s).
+  Production on 16 GPUs: uniform 2310 -> 667 s, stretched 359 -> 319 s (now particle bound).
+  CPU 192 ranks pure MPI: uniform 3900 s, stretched 1530 s (was 8960 / 7240 with 16x24 threads).
+  Thomas ALREADY pinned threads (close/cores, srun --cpu-bind=cores): binding hypothesis wrong;
+  OpenMP scaling (24 threads 277 s, 5.5x) still unexplained, kernel profiles pending. Measured here:
+  ~0.65 ms per slice of non-kernel host time on 1 thread (~40 s per full sweep, does not scale).
+  Description of his benchmark says density step at 75 cm, but the deck has z < 8750 k_p^-1
+  = 1.76 m (k_p^-1 = 201 um at 7e14); sigma_z written as 253.74 um, should be k_p^-1 (5.1 cm).
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
@@ -170,8 +179,8 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
   no ionization energy loss.
 - No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
-- GPU: 1 H200 (108 s/sweep) ~ 1/3 of a 48-core JUWELS node (33 s) with the old PCR; re-measure
-  with the partition solver. Then: fused slice kernels, laser.advance is still a serial complex
+- GPU: with the partition solver 1 H200 (25 s/sweep) ~ 1.4 JUWELS nodes (35 s). Next: fused
+  slice kernels, laser.advance is still a serial complex
   Thomas (Range(0,1)) on the GPU. CPU OpenMP scaling poor (5.5x on 24 threads): wait for profiles.
 
 - Paper: Alexander submits v1 to arXiv now (priority for the non-uniform radial grid); referee
