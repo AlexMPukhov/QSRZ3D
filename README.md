@@ -345,9 +345,15 @@ an initially empty species). Three channels:
   on L_n f = r^{n−1} ∂_r[r^{1−2n} ∂_r(rⁿ f)]. For n = 1 this is the usual
   ∂_r[(1/r)∂_r(rB)].
 - **Gradients.** 3-point, second order on non-uniform grids.
-- **Tridiagonal solves.** Thomas on CPU. On GPU, parallel cyclic reduction
-  runs inside one team (one thread block). Both are selectable with
-  `solver.tridiag`.
+- **Tridiagonal solves.** Thomas on CPU. On GPU, a Thomas/PCR hybrid
+  (partition method, Laszlo, Giles & Appleyard 2016): the matrix is cut into
+  P ≤ 256 chunks of ≥ 8 rows, each GPU thread eliminates the interior of its
+  chunk, the 2P chunk-end unknowns are solved by parallel cyclic reduction in
+  shared memory, then the interior is recovered. P depends only on the grid
+  size, so the result does not depend on the thread count. Plain PCR in one
+  team (the earlier GPU default) does log₂M passes over global memory and
+  dominated the GPU time on grids with thousands of radial nodes. All three
+  are selectable with `solver.tridiag`.
 - **Convergence.** Second order on uniform and smoothly stretched grids.
   Measured orders are 1.9–2.0 for L₀, L₁ and L₂; see `tests/test_solvers.cpp`.
 - **Grid ratio.** Keep neighbouring cell ratios at or below about 1.1
@@ -374,18 +380,38 @@ an initially empty species). Three channels:
   from many radial cells.
 
 **GPU status:** the code (including the m = 1 and the MPI versions) compiles and links for CUDA 13.4 /
-sm_80 (A100) with Kokkos 5.2.2 (MPI: OpenMPI 4). It **runs on an NVIDIA Blackwell GPU (GB202)**
-(T. C. Wilson, October 2026): about 50 times faster than one thread of an Intel Xeon E5620.
-A systematic GPU benchmark (all cores of a current CPU as the reference) and a file-by-file
-comparison of GPU and CPU results are still to be done. All physics tests were run on the OpenMP
-backend. The PCR solver (the GPU default) was tested on CPU and agrees with
-Thomas to round-off. The first thing to do on a GPU machine is to run
+sm_80 (A100) with Kokkos 5.2.2 (MPI: OpenMPI 4). It runs on NVIDIA Blackwell (GB202) and H200
+GPUs (T. C. Wilson, October 2026). AWAKE benchmark (20 M beam protons, ppc 128, box 1000 × 1/64,
+R = 30, `inputs_nodiags`, uniform grid with 3841 nodes), seconds per sweep and rank:
+
+| JUWELS node (2 × Xeon 8168) | 1 core | 48 MPI ranks | 24 OpenMP threads | 2 ranks × 24 threads |
+|---|---|---|---|---|
+| s/sweep | 1516 | 33 (96 % efficiency) | 274 (5.5×) | 83 |
+
+| JUPITER H200 GPUs | 1 | 2 | 4 | 8 | 16 |
+|---|---|---|---|---|---|
+| s/sweep | 108 | 55 | 27 | 13 | 7 |
+
+MPI scales almost ideally on CPUs and GPUs; one H200 was then (PCR tridiagonal solver) about
+three times slower than a full 48-core node. The GPU time grew with the number of radial nodes
+much more than with the number of particles (uniform 3841 nodes: 2310 s on 16 GPUs, stretched
+404 nodes: 359 s), which points to the tridiagonal solves (PCR in one thread block, log₂M passes
+over global memory). The partition solver replaces it as the GPU default (to be re-measured).
+OpenMP threading on CPUs scales poorly beyond a few threads (see "CPU threads" below); prefer
+MPI ranks per core. All physics tests were run on the OpenMP backend; PCR and partition were
+tested on CPU and agree with Thomas to round-off. The first thing to do on a GPU machine is to run
 `ctest` and `validation/run_validation.sh -q -c`.
+
+**CPU threads.** Pin the threads: `OMP_PROC_BIND=close OMP_PLACES=cores` (with SLURM also
+`--cpus-per-task` and `--cpu-bind=cores`), and keep the threads of one rank inside one NUMA
+domain (on a 2-socket node: at least 2 ranks per node). One slice launches ~25 small parallel
+loops, so thread wake-up and fork/join latency matter. `OMP_PROC_BIND=false` is only a workaround
+for containers with a restricted CPU set.
 
 **Possible next steps for GPU speed:**
 
 - a persistent single-kernel slice sweep, with team-local scratch arrays for
-  the sources and the PCR;
+  the sources and the tridiagonal solves;
 - batching independent runs (parameter scans) into one launch.
 
 ### MPI: decomposition along ξ with pipelined time steps
@@ -533,7 +559,7 @@ never read are reported at the end of the run, which catches typos.
 
 | key | default | meaning |
 |---|---|---|
-| `grid.type` | `uniform` | `uniform` \| `regions` \| `file` |
+| `grid.type` | `uniform` | `uniform` \| `regions` (alias `stretched`) \| `file` |
 | `grid.rmax` | — | outer radius R (conducting wall) |
 | `grid.dr` | — | spacing for `uniform` |
 | `grid.regions` | — | `r_end:h` pairs, e.g. `0.05:0.0005 2.5:0.01 8:0.05`. Spacing h is used for r < r_end. Transitions are geometric. A coarse→fine transition starts early enough to reach the fine spacing at the boundary. |
@@ -556,7 +582,7 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `plasma.smooth_length` | 0 | a > 0: radial smoothing of all plasma sources, f ← (1 − a²∇⊥²)⁻¹ f, which regularizes the singular density/E_z spike at the closure of a bubble (§1, plasma push). 0.005 is a good value; the axis cell and Δξ should be ≤ a. |
 | `pusher.max_cells_per_step` | 0 | adaptive sub-slicing: split a ξ step into sub-slices if a plasma particle would cross more radial cells than this (0 = off; 1 is a good value). The step line of the log reports the extra sub-slices (rank 0). |
 | `pusher.substep_max` | 64 | largest number of sub-slices per step |
-| `solver.tridiag` | `auto` | `auto` (Thomas on host, PCR on device) \| `thomas` \| `pcr` |
+| `solver.tridiag` | `auto` | `auto` (Thomas on host, partition on device) \| `thomas` \| `pcr` \| `partition` |
 | `beams.xi_shape` | `linear` (1 rank), `ngp` (MPI) | longitudinal shape of beam particles for deposit and field gather: `linear` (between two slices) or `ngp` (nearest slice). MPI runs need `ngp`; a serial run with `ngp` gives the same results as an MPI run. |
 | `pusher.beam` | `vay` | beam momentum pusher: `vay` \| `hc` \| `imp` \| `imp_rr` \| `boris`. Can be overridden per beam with `<beam>.pusher`. |
 | `pusher.rr_n0_cm3` | 0 | plasma density in cm⁻³. With `imp_rr`, a value > 0 switches on radiation reaction. |
@@ -897,7 +923,7 @@ A planted bug (π changed by 0.3 %) is caught by the quick mode in 4 of 6 sectio
 | test | result |
 |---|---|
 | Unit: pushers (`test_pushers`) | Identities: `imp` = HC to 5·10⁻¹⁴ and `imp_rr`(ν=0) = Vay exactly, over 10⁶ random states. Force-free γ = 2·10⁴ particle: Vay/HC/IMP exact, Boris drifts. Radiation-reaction energy loss equals ∫ν u·v dt to 0.05 %. |
-| Unit: tridiagonal (M = 1537) | Thomas and PCR both at round-off level (4·10⁻¹⁶, 7·10⁻¹⁶) |
+| Unit: tridiagonal (M = 16 … 9001) | Thomas, PCR and partition all at round-off level (≤ 7·10⁻¹⁶) |
 | Unit: L₀, L₁ (flux and Dirichlet wall), L₂ with χ, manufactured solutions | second order: measured 1.9–2.0 on uniform and 1.98–2.0 on stretched grids (h₀ = 0.01 → 0.00125, ratio ≤ 1.05) |
 | Cartesian particle rewrite, `modes = 0`, vs the earlier ring version | linear wake and blowout fields agree to 10⁻¹⁰–10⁻¹³; beam energies identical |
 | `modes = 1`, centred beam (quiet start) | m = 0 identical to `modes = 0` to 10⁻¹³; all m = 1 fields ≤ 5·10⁻¹⁵ |

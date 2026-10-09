@@ -33,14 +33,14 @@ static std::vector<Real> to_host(const View1D& d) {
 
 static void test_tridiag() {
     std::printf("Tridiagonal solvers\n");
-    const int M = 1537;
+  for (int M : {16, 17, 100, 1537, 3841, 9001}) {
     std::mt19937 rng(3);
     std::uniform_real_distribution<double> U(-1, 1);
     std::vector<Real> a(M), b(M), c(M), x(M), d(M);
     for (int i = 0; i < M; ++i) { a[i] = i ? U(rng) : 0; c[i] = i < M - 1 ? U(rng) : 0; b[i] = 2.5 + U(rng); x[i] = U(rng); }
     for (int i = 0; i < M; ++i) d[i] = b[i] * x[i] + (i ? a[i] * x[i - 1] : 0) + (i < M - 1 ? c[i] * x[i + 1] : 0);
     auto A = to_dev(a), B = to_dev(b), C = to_dev(c), D = to_dev(d);
-    for (auto m : {TridiagMethod::Thomas, TridiagMethod::PCR}) {
+    for (auto m : {TridiagMethod::Thomas, TridiagMethod::PCR, TridiagMethod::Partition}) {
         TridiagSolver ts(M, m);
         View1D X("x", M);
         ts.solve(A, B, C, D, X);
@@ -48,9 +48,11 @@ static void test_tridiag() {
         double err = 0;
         for (int i = 0; i < M; ++i) err = std::max(err, std::abs(xs[i] - x[i]));
         char msg[128];
-        std::snprintf(msg, sizeof(msg), "%s max error %.2e", m == TridiagMethod::PCR ? "PCR   " : "Thomas", err);
+        std::snprintf(msg, sizeof(msg), "M = %5d %s max error %.2e", M,
+                      m == TridiagMethod::PCR ? "PCR      " : m == TridiagMethod::Thomas ? "Thomas   " : "Partition", err);
         check(err < 1e-12, msg);
     }
+  }
 }
 
 // manufactured solutions (R = 4):

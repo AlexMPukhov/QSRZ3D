@@ -76,7 +76,7 @@ Package for delivery (includes .git, so the history survives the container):
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
 - Never edit `run_validation.sh` while it is running (bash reads scripts incrementally).
 
-## Status (2026-10-07)
+## Status (2026-10-09)
 Done and validated (README §7, `validation/reference_full.txt`):
 - core solver, non-uniform grid, m = 1 mode, mobile ions, parsed profiles, MPI, openPMD,
   CUDA compiles and runs on a Blackwell GB202 GPU (Thomas, 2026-10-06: ~50x vs one thread of a
@@ -128,6 +128,22 @@ Done and validated (README §7, `validation/reference_full.txt`):
   OpenMP thread (scaling 1.06x -> 1.83x on 2 threads). Advice: ppc 128 is far more than needed
   for m = 0; pipeline efficiency N/(N+P-1) (240 ranks, 300 steps: 56 %); field output of the
   uniform case is 20 GB per file -> diagnostic groups.
+- Thomas' scaling benchmark (2026-10-09, inputs_nodiags = AWAKE deck without output; per-sweep s):
+  JUWELS node 1 core 1516, 48 MPI ranks 33 (96 %), OpenMP 6/12/24 threads 442/332/274 (5.5x),
+  2x24 hybrid 83; H200 1/2/4/8/16 GPUs 108/55/27/13/7 (ideal). Production 16 ranks: uniform CPU
+  (16x24 threads) 8960 s, GPU 2310 s; stretched (now 5:0.02, 403 cells) CPU 7240, GPU 359.
+  Diagnosis: GPU time ~ alpha*N_nodes (uniform/stretched fit: ~87 % of the uniform GPU time grid
+  bound) -> the one-block PCR (log2 M passes over global memory). New TridiagMethod::Partition
+  (Laszlo-Giles-Appleyard Thomas/PCR hybrid, P = min(256, M/8) chunks, reduced 2P system by PCR in
+  team scratch; result independent of thread count) is now the GPU default (`auto`); host default
+  stays Thomas (partition on 2 vCPUs here: 57 us 1 thread vs Thomas 43 us). Unit test M = 16..9001,
+  full runs agree with Thomas to 1e-10; CUDA compiles. NOT yet measured on a GPU.
+  CPU threading: kernel profile here (1 thread) is 97 % in plasma.push/deposit/deposit_S, serial
+  Thomas 0.8 %; Amdahl fit of Thomas' numbers gives a constant ~3.5 ms per slice that does not
+  shrink with threads -> suspect unpinned threads (we told him OMP_PROC_BIND=false in
+  paper/inputs/README; now corrected to close/cores) and fork/join wake-up (~25 regions per slice).
+  Asked for kernel-timer profiles (1 vs 24 threads, GPU uniform vs stretched).
+  `grid.type = stretched` accepted as alias of regions (Thomas' deck uses it).
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
@@ -154,9 +170,9 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
   no ionization energy loss.
 - No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
-- GPU: Thomas' AWAKE numbers (see Status): 1 H200 ~ one 24-core Xeon 8168 socket on the old
-  code; to be re-measured after b6bb3b7. GPU per-slice work is small -> launch-bound; fused slice
-  kernels would help. Still needed for the paper: systematic GPU vs full-node CPU timing.
+- GPU: 1 H200 (108 s/sweep) ~ 1/3 of a 48-core JUWELS node (33 s) with the old PCR; re-measure
+  with the partition solver. Then: fused slice kernels, laser.advance is still a serial complex
+  Thomas (Range(0,1)) on the GPU. CPU OpenMP scaling poor (5.5x on 24 threads): wait for profiles.
 
 - Paper: Alexander submits v1 to arXiv now (priority for the non-uniform radial grid); referee
   round used for items 1-3 below. The manuscript cites https://github.com/AlexMPukhov/QUARZ

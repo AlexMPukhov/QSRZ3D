@@ -90,7 +90,7 @@ RadialGrid::RadialGrid(const Config& cfg) {
     std::vector<Real> nodes;
     if (type == "uniform") {
         nodes = make_uniform(cfg.get_double("grid.rmax"), cfg.get_double("grid.dr"));
-    } else if (type == "regions") {
+    } else if (type == "regions" || type == "stretched") {   // "stretched": alias
         nodes = make_regions(cfg.get_double("grid.rmax"), cfg.get_pairs("grid.regions"),
                              cfg.get_double("grid.max_ratio", 1.05));
     } else if (type == "file") {

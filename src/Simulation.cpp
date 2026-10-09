@@ -43,7 +43,8 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     TridiagMethod method = TridiagMethod::Auto;
     if (tm == "thomas") method = TridiagMethod::Thomas;
     else if (tm == "pcr") method = TridiagMethod::PCR;
-    else if (tm != "auto") throw std::runtime_error("solver.tridiag must be auto|thomas|pcr");
+    else if (tm == "partition") method = TridiagMethod::Partition;
+    else if (tm != "auto") throw std::runtime_error("solver.tridiag must be auto|thomas|pcr|partition");
     solver_ = std::make_unique<FieldSolver>(*grid_, method);
     // radial smoothing of the plasma sources (regularizes the axis caustic at the bubble back)
     smooth_a_ = cfg.get_double("plasma.smooth_length", 0.0);

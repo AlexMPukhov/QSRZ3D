@@ -9,7 +9,8 @@ they reproduce the convergence errors of the paper exactly.
 Run: `QUARZ=/path/to/quarz LAUNCH="mpirun -np 4" bash run_paper_cases.sh [groups]`
 (groups `conv ref maps evo bench mpi`, default `conv maps evo bench`). Output goes to
 `out_<case>/` and `log_<case>.txt` in the current directory; the script prints the wall time and
-the mean time per sweep. On CPUs set `OMP_PROC_BIND=false` if OpenMP runs badly.
+the mean time per sweep. On CPUs pin the threads (`OMP_PROC_BIND=close OMP_PLACES=cores`); `OMP_PROC_BIND=false` only
+in containers with a restricted CPU set.
 
 | Deck | Paper | Radial cells N | Steps | CPU s/sweep (2 OpenMP threads) |
 |---|---|---|---|---|
