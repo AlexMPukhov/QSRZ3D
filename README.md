@@ -380,7 +380,7 @@ an initially empty species). Three channels:
   from many radial cells.
 
 **GPU status:** the code (including the m = 1 and the MPI versions) compiles and links for CUDA 13.4 /
-sm_80 (A100) with Kokkos 5.2.2 (MPI: OpenMPI 4). It runs on NVIDIA Blackwell (GB202) and H200
+sm_80 (A100) with Kokkos 5.2.2 (MPI: OpenMPI 4). It runs on NVIDIA Blackwell (GB202) and GH200
 GPUs (T. C. Wilson, October 2026). AWAKE benchmark (20 M beam protons, ppc 128, box 1000 × 1/64,
 R = 30, `inputs_nodiags`, uniform grid with 3841 nodes), seconds per sweep and rank:
 
@@ -388,11 +388,11 @@ R = 30, `inputs_nodiags`, uniform grid with 3841 nodes), seconds per sweep and r
 |---|---|---|---|---|
 | s/sweep | 1516 | 33 (96 % efficiency) | 274 (5.5×) | 83 |
 
-| JUPITER H200 GPUs | 1 | 2 | 4 | 8 | 16 |
+| JUPITER GH200 GPUs | 1 | 2 | 4 | 8 | 16 |
 |---|---|---|---|---|---|
 | s/sweep | 108 | 55 | 27 | 13 | 7 |
 
-MPI scales almost ideally on CPUs and GPUs; one H200 was then (PCR tridiagonal solver) about
+MPI scales almost ideally on CPUs and GPUs; one GH200 was then (PCR tridiagonal solver) about
 three times slower than a full 48-core node. The GPU time grew with the number of radial nodes
 much more than with the number of particles (uniform 3841 nodes: 2310 s on 16 GPUs, stretched
 404 nodes: 359 s), which points to the tridiagonal solves (PCR in one thread block, log₂M passes

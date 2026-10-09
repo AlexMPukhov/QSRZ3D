@@ -51,4 +51,4 @@ Decks by T. C. Wilson (setup of Farmer et al., IPAC'26 TUP3035; units k_p^-1 = 2
 `awake_uniform.in` (3840 cells) and `awake_stretched.in` (403 cells) produce Fig. fig_awake (fields
 at step 150 = 6 m; runs to 12 m); `awake_nodiags.in` is the uniform deck without output, used for
 the timings of Table tab:perf. Measured on JUWELS (2 x Xeon Platinum 8168 per node) and JUPITER
-(NVIDIA H200): 1 core 1519 s per sweep, 48 MPI ranks 35 s, 1 GPU 25 s, 16 GPUs 1.8 s per rank.
+(NVIDIA GH200, GPU only; per-sweep times averaged over 50 sweeps, 10 on one core): 1 core 1519 s per sweep, 48 MPI ranks 35 s, 1 GPU 25 s, 16 GPUs 1.8 s per rank.

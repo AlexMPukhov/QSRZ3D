@@ -73,6 +73,7 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Pinched witness with mobile hydrogen ions (single quasi-static solve, noise-free beams). (a) Electron density and beam density contours over the whole box, stretched grid with 512 cells. (b)--(e) Ion density near the axis inside the witness: uniform grids with $\Delta r = 0.01$ (800 cells) and $0.005$ (1600 cells), the stretched grid of (a) with $h_0 = 5\times 10^{-4}$ on the axis, and the reference ($h_0 = 1.6\times 10^{-5}$, 14\,617 cells). On the uniform grids the ion spike is spread over the first cells and its peak is too low; the stretched grid is indistinguishable from the reference.}}{5}{figure.2}\protected@file@percent }
 \newlabel{fig:maps}{{2}{5}{Pinched witness with mobile hydrogen ions (single quasi-static solve, noise-free beams). (a) Electron density and beam density contours over the whole box, stretched grid with 512 cells. (b)--(e) Ion density near the axis inside the witness: uniform grids with $\Delta r = 0.01$ (800 cells) and $0.005$ (1600 cells), the stretched grid of (a) with $h_0 = 5\times 10^{-4}$ on the axis, and the reference ($h_0 = 1.6\times 10^{-5}$, 14\,617 cells). On the uniform grids the ion spike is spread over the first cells and its peak is too low; the stretched grid is indistinguishable from the reference}{figure.2}{}}
 \citation{Farmer2026}
+\citation{Diederichs2022}
 \citation{Farmer2026}
 \citation{Farmer2026}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Error versus number of radial cells for the pinched witness of Fig.~\ref {fig:maps}: (a) ion density on the axis, (b) focusing field $W_r = E_r - B_\theta $ at $r=0.01$ (the witness radius), (c) $E_z$ on the axis. Open circles: uniform grids; squares: stretched grids with the same shape and all spacings scaled. The grids of Table~\ref {tab:pinch} are labelled. The flattening of the finest stretched points in (b) reflects the accuracy of the reference.}}{6}{figure.3}\protected@file@percent }
@@ -90,14 +91,14 @@
 \citation{Claude}
 \bibcite{Mora1997}{{1}{}{{}}{{}}}
 \bibcite{Lotov2003}{{2}{}{{}}{{}}}
-\bibcite{Sosedkin2016}{{3}{}{{}}{{}}}
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Self-modulation of the AWAKE proton bunch after 6~m of plasma: QUARZ on uniform (3840 cells) and stretched (403 cells) radial grids, on CPUs and GPUs, compared with HiPACE++. (a) $E_z$ on the axis, with the head of the bunch at $\xi = 0$. (b) Phase of $E_z(r=0)$ and of the transverse force $F_r = E_r - B_\theta $ at $r = 0.1$ and $1\,k_p^{-1}$, from the zero crossings of the fields. Saturated lines: HiPACE++; light lines: the four QUARZ runs.}}{8}{figure.6}\protected@file@percent }
 \newlabel{fig:awake}{{6}{8}{Self-modulation of the AWAKE proton bunch after 6~m of plasma: QUARZ on uniform (3840 cells) and stretched (403 cells) radial grids, on CPUs and GPUs, compared with HiPACE++. (a) $E_z$ on the axis, with the head of the bunch at $\xi = 0$. (b) Phase of $E_z(r=0)$ and of the transverse force $F_r = E_r - B_\theta $ at $r = 0.1$ and $1\,k_p^{-1}$, from the zero crossings of the fields. Saturated lines: HiPACE++; light lines: the four QUARZ runs}{figure.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Wall-clock time of one sweep per rank (s), AWAKE case of Sec.~\ref {sec:awake} on the uniform grid (3840 cells, 64\,064 slices, $2\times 10^7$ beam particles). CPU: JUWELS (Intel Xeon Platinum 8168, 48 cores per node); GPU: NVIDIA H200 (JUPITER).}}{8}{table.3}\protected@file@percent }
-\newlabel{tab:perf}{{III}{8}{Wall-clock time of one sweep per rank (s), AWAKE case of Sec.~\ref {sec:awake} on the uniform grid (3840 cells, 64\,064 slices, $2\times 10^7$ beam particles). CPU: JUWELS (Intel Xeon Platinum 8168, 48 cores per node); GPU: NVIDIA H200 (JUPITER)}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {III}{\ignorespaces Wall-clock time of one sweep per rank (s), AWAKE case of Sec.~\ref {sec:awake} on the uniform grid (3840 cells, 64\,064 slices, $2\times 10^7$ beam particles). Averages over 50 sweeps (10 on one core). CPU: JUWELS (Intel Xeon Platinum 8168, 48 cores per node); GPU: NVIDIA GH200 (JUPITER).}}{8}{table.3}\protected@file@percent }
+\newlabel{tab:perf}{{III}{8}{Wall-clock time of one sweep per rank (s), AWAKE case of Sec.~\ref {sec:awake} on the uniform grid (3840 cells, 64\,064 slices, $2\times 10^7$ beam particles). Averages over 50 sweeps (10 on one core). CPU: JUWELS (Intel Xeon Platinum 8168, 48 cores per node); GPU: NVIDIA GH200 (JUPITER)}{table.3}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {VII}Conclusions}{8}{section*.24}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {}Acknowledgments}{8}{section*.25}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {}References}{8}{section*.26}\protected@file@percent }
+\bibcite{Sosedkin2016}{{3}{}{{}}{{}}}
 \bibcite{Huang2006}{{4}{}{{}}{{}}}
 \bibcite{An2013}{{5}{}{{}}{{}}}
 \bibcite{Li2021}{{6}{}{{}}{{}}}

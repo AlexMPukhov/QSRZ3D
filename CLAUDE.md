@@ -121,8 +121,8 @@ Done and validated (README §7, `validation/reference_full.txt`):
   (278 nodes, regions 0.1:0.005 1:0.01 5:0.05 30:1.0) agree with HiPACE++ (E_z amplitude, phases
   of E_z(0), F_r(0.1), F_r(1)); small near-axis deviation in F_r(0.1) phase, probably ion motion
   (off in HiPACE++). Stretched E_z amplitude ~3 % above uniform/HiPACE at xi < -170: check grid
-  convergence (0.05 cells at 1 < r < 5 and at the plasma edge). Timings: 16 H200 GPUs uniform
-  2560 s / stretched 391 s; 240 CPU ranks x 2 threads 8520 / 1970 s; 1 H200 ~ 118 s per sweep.
+  convergence (0.05 cells at 1 < r < 5 and at the plasma edge). Timings: 16 GH200 GPUs uniform
+  2560 s / stretched 391 s; 240 CPU ranks x 2 threads 8520 / 1970 s; 1 GH200 ~ 118 s per sweep.
   Fixed after his report (b6bb3b7): every rank held the whole beam (OOM with 48 ranks/node);
   zero-weight plasma rings outside r = 5 were loaded (6x particles) and all live rings went to one
   OpenMP thread (scaling 1.06x -> 1.83x on 2 threads). Advice: ppc 128 is far more than needed
@@ -130,7 +130,7 @@ Done and validated (README §7, `validation/reference_full.txt`):
   uniform case is 20 GB per file -> diagnostic groups.
 - Thomas' scaling benchmark (2026-10-09, inputs_nodiags = AWAKE deck without output; per-sweep s):
   JUWELS node 1 core 1516, 48 MPI ranks 33 (96 %), OpenMP 6/12/24 threads 442/332/274 (5.5x),
-  2x24 hybrid 83; H200 1/2/4/8/16 GPUs 108/55/27/13/7 (ideal). Production 16 ranks: uniform CPU
+  2x24 hybrid 83; GH200 1/2/4/8/16 GPUs 108/55/27/13/7 (ideal). Production 16 ranks: uniform CPU
   (16x24 threads) 8960 s, GPU 2310 s; stretched (now 5:0.02, 403 cells) CPU 7240, GPU 359.
   Diagnosis: GPU time ~ alpha*N_nodes (uniform/stretched fit: ~87 % of the uniform GPU time grid
   bound) -> the one-block PCR (log2 M passes over global memory). New TridiagMethod::Partition
@@ -144,10 +144,15 @@ Done and validated (README §7, `validation/reference_full.txt`):
   paper/inputs/README; now corrected to close/cores) and fork/join wake-up (~25 regions per slice).
   Asked for kernel-timer profiles (1 vs 24 threads, GPU uniform vs stretched).
   `grid.type = stretched` accepted as alias of regions (Thomas' deck uses it).
-  RESULT with partition (Thomas, 2026-10-09 afternoon): H200 1/2/4/8/16 GPUs 25/13/6.5/3.4/1.8
-  s/sweep (4.3x faster, still ideal scaling; 1 H200 ~ 1.4 JUWELS nodes of 48 MPI ranks, 35 s).
+  JUPITER = GH200 (not H200). Timings = averages of 50 sweeps (1 core: 10). HiPACE++ 24.08: dx=dy=1/128
+  (same as QUARZ uniform), dxi 1/64, box 16x16x251, 5x5 ppc, 1.2e8 beam particles, immobile ions.
+  Paper: Sec. awake (Fig. fig_awake.pdf from Tom) + Sec. perf (Table tab:perf); JSC project LPQED.
+  F_r(0.1) phase differs up to 0.4 rad (xi -210..-130), same transverse cell -> not resolution;
+  likely non-axisymmetric noise in 3D acting on the tearing (m = 0 excludes it).
+  RESULT with partition (Thomas, 2026-10-09 afternoon): GH200 1/2/4/8/16 GPUs 25/13/6.5/3.4/1.8
+  s/sweep (4.3x faster, still ideal scaling; 1 GH200 ~ 1.4 JUWELS nodes of 48 MPI ranks, 35 s).
   Production on 16 GPUs: uniform 2310 -> 667 s, stretched 359 -> 319 s (now particle bound).
-  CPU 192 ranks pure MPI: uniform 3900 s, stretched 1530 s (was 8960 / 7240 with 16x24 threads).
+  CPU 384 ranks pure MPI (8 JUWELS nodes): uniform 3900 s, stretched 1530 s (was 8960 / 7240 with 16x24 threads).
   Thomas ALREADY pinned threads (close/cores, srun --cpu-bind=cores): binding hypothesis wrong;
   OpenMP scaling (24 threads 277 s, 5.5x) still unexplained, kernel profiles pending. Measured here:
   ~0.65 ms per slice of non-kernel host time on 1 thread (~40 s per full sweep, does not scale).
@@ -179,7 +184,7 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - Laser: m = 0 envelope only, no d^2/dt^2, no phase correction for strong red-shift,
   no ionization energy loss.
 - No collisional ionization by plasma electrons, no recombination; impact only level 0 -> 1.
-- GPU: with the partition solver 1 H200 (25 s/sweep) ~ 1.4 JUWELS nodes (35 s). Next: fused
+- GPU: with the partition solver 1 GH200 (25 s/sweep) ~ 1.4 JUWELS nodes (35 s). Next: fused
   slice kernels, laser.advance is still a serial complex
   Thomas (Range(0,1)) on the GPU. CPU OpenMP scaling poor (5.5x on 24 threads): wait for profiles.
 
