@@ -21,6 +21,7 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
     q_ = cfg.get_double(name + ".charge", -1.0);
     m_ = cfg.get_double(name + ".mass", 1.0);
     rigid_ = cfg.get_bool(name + ".rigid", false);
+    adaptive_dt_ = cfg.get_bool(name + ".adaptive_dt", true);
     const std::string pm = cfg.get_string(name + ".pusher", cfg.get_string("pusher.beam", "vay"));
     if (pm == "vay") pusher_ = BeamPusher::Vay;
     else if (pm == "boris") pusher_ = BeamPusher::Boris;
@@ -565,14 +566,29 @@ void Beam::deposit_impact(const View3D& imp) const {
     });
 }
 
-void Beam::push(const View3D& fld, Real dt, const View3D& pond) {
+void Beam::push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond) {
     if (rigid_) return;
-    // leapfrog start-up: momenta are given at t, the scheme needs them at t - dt/2
-    if (!started_) { advance(fld, -0.5 * dt, false, pond); started_ = true; }
-    advance(fld, dt, true, pond);
+    // leapfrog start-up: momenta are given at t, the scheme needs them at t - dt_kick/2
+    if (!started_) { advance(fld, -0.5 * dt_kick, -0.5 * dt_kick, false, pond); started_ = true; }
+    advance(fld, dt_kick, dt_drift, true, pond);
 }
 
-void Beam::advance(const View3D& fld, Real dt, bool move, const View3D& pond) {
+double Beam::min_gamma_eff(double gthr) const {
+    if (!adaptive_dt()) return std::numeric_limits<double>::infinity();
+    auto px = px_; auto py = py_; auto pz = pz_; auto w = w_;
+    const Real thr = gthr;
+    Real g = std::numeric_limits<Real>::max();
+    Kokkos::parallel_reduce("beam.min_gamma", Range(0, Np_), KOKKOS_LAMBDA(int i, Real& m) {
+        if (w(i) == Real(0)) return;
+        Real gi = Kokkos::sqrt(Real(1) + px(i) * px(i) + py(i) * py(i) + pz(i) * pz(i));
+        if (gi < thr) gi = thr;
+        if (gi < m) m = gi;
+    }, Kokkos::Min<Real>(g));
+    if (g == std::numeric_limits<Real>::max()) return std::numeric_limits<double>::infinity();
+    return static_cast<double>(g) * m_ / std::abs(q_);
+}
+
+void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const View3D& pond) {
     const bool laser = pond.extent(0) > 0;
     const GridD g = grid_.d;
     auto x = x_; auto y = y_; auto px = px_; auto py = py_; auto pz = pz_; auto xi = xi_; auto w = w_;
@@ -626,7 +642,7 @@ void Beam::advance(const View3D& fld, Real dt, bool move, const View3D& pond) {
         }
         const push::V3 E{Ex, Ey, Ez}, B{Bx, By, Bz};
         push::V3 u{px(i), py(i), pz(i)};
-        const Real h = Real(0.5) * qm * dt;
+        const Real h = Real(0.5) * qm * dt_kick;
         // laser ponderomotive force (time-averaged):  du/dt = -qhat^2 grad<a^2> / (2 gamma_bar),  d/dz = -d/dxi
         push::V3 Fp{Real(0), Real(0), Real(0)};
         if (laser) {
@@ -641,11 +657,11 @@ void Beam::advance(const View3D& fld, Real dt, bool move, const View3D& pond) {
         }
         if (!move) {
             const Real g0 = Kokkos::sqrt(Real(1) + push::dot(u, u));
-            u = u + (Real(2) * h) * (E + push::cross((Real(1) / g0) * u, B)) + dt * Fp;
+            u = u + (Real(2) * h) * (E + push::cross((Real(1) / g0) * u, B)) + dt_kick * Fp;
             px(i) = u.x; py(i) = u.y; pz(i) = u.z;
             return;
         }
-        u = u + (Real(0.5) * dt) * Fp;   // half kick (Strang splitting around the Lorentz push)
+        u = u + (Real(0.5) * dt_kick) * Fp;   // half kick (Strang splitting around the Lorentz push)
         switch (mode) {
             case 0: u = push::vay(u, E, B, h); break;
             case 1: u = push::boris(u, E, B, h); break;
@@ -653,10 +669,10 @@ void Beam::advance(const View3D& fld, Real dt, bool move, const View3D& pond) {
             case 3: u = push::imp(u, E, B, h); break;
             default: {
                 const Real nu = push::rr_rate(u, E, B, qm, rr);
-                u = push::imp_rr(u, E, B, h, nu * dt);
+                u = push::imp_rr(u, E, B, h, nu * dt_kick);
             }
         }
-        u = u + (Real(0.5) * dt) * Fp;
+        u = u + (Real(0.5) * dt_kick) * Fp;
         const Real p2 = u.x * u.x + u.y * u.y;
         const Real gam = Kokkos::sqrt(Real(1) + p2 + u.z * u.z);
         const Real omvz = (Real(1) + p2) / (gam * (gam + u.z));

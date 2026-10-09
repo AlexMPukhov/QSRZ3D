@@ -50,6 +50,7 @@ public:
     void write(int step, double t, const FieldTable* fields, const std::vector<const Beam*>& beams, int xi_stride = 1,
                int particle_stride = 1);
     void close();
+    void set_dt(double dt);   // time step of the next iterations (adaptive time step)
     std::string description() const;
 
 private:

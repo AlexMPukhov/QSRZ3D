@@ -143,6 +143,21 @@ PlasmaSpecies::PlasmaSpecies(const Config& cfg, const std::string& name, const R
     }
 }
 
+double PlasmaSpecies::max_density(double z0, double z1, double R) const {
+    const int NZ = 256, NR = 64;
+    double nmax = 0;
+    for (int a = 0; a <= NZ; ++a) {
+        const double z = z0 + (z1 - z0) * a / NZ;
+        const double fz = prof_.parsed() ? density_factor_ : prof_.longitudinal(z) * density_factor_;
+        for (int b = 0; b <= NR; ++b) {
+            const double r = R * b / NR;
+            const double n = fz * (prof_.parsed() ? prof_.eval(r, 0.0, z) : prof_.radial(r));
+            nmax = std::max(nmax, n);
+        }
+    }
+    return nmax;
+}
+
 void PlasmaSpecies::load(Real z, unsigned long long seed) {
     auto hx = Kokkos::create_mirror_view(x_);
     auto hy = Kokkos::create_mirror_view(y_);

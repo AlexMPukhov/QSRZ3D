@@ -60,6 +60,40 @@ void Comm::wait_send() {
         pending_ = false;
     }
 #endif
+    test_small(true);
+}
+
+void Comm::test_small(bool wait) {
+#ifdef QUARZ_USE_MPI
+    std::vector<Small> keep;
+    for (auto& s : small_) {
+        MPI_Request* r = static_cast<MPI_Request*>(s.req);
+        int done = 0;
+        if (wait) { MPI_Wait(r, MPI_STATUS_IGNORE); done = 1; }
+        else MPI_Test(r, &done, MPI_STATUS_IGNORE);
+        if (done) delete r;
+        else keep.push_back(std::move(s));
+    }
+    small_ = std::move(keep);
+#else
+    (void)wait;
+#endif
+}
+
+void Comm::isend_small(int dest, int tag, std::vector<double>&& buf) {
+#ifdef QUARZ_USE_MPI
+    test_small(false);
+    Small s;
+    s.buf = std::move(buf);
+    small_.push_back(std::move(s));
+    Small& b = small_.back();
+    MPI_Request* r = new MPI_Request;
+    b.req = r;
+    MPI_Isend(b.buf.data(), static_cast<int>(b.buf.size()), MPI_DOUBLE, dest, tag, MPI_COMM_WORLD, r);
+#else
+    (void)dest; (void)tag; (void)buf;
+    throw std::runtime_error("Comm::isend_small without MPI");
+#endif
 }
 
 void Comm::isend(int dest, int tag, std::vector<double>&& buf) {
@@ -93,6 +127,16 @@ std::vector<double> Comm::recv(int src, int tag) {
 void Comm::barrier() {
 #ifdef QUARZ_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
+#endif
+}
+
+double Comm::allreduce_min(double v) {
+#ifdef QUARZ_USE_MPI
+    double out;
+    MPI_Allreduce(&v, &out, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    return out;
+#else
+    return v;
 #endif
 }
 

@@ -304,6 +304,7 @@ void Simulation::write_group_outputs(int n) {
             const auto table = (field_out && any_fields) ? field_table(&g) : nullptr;
             std::vector<const Beam*> bl;
             if (beam_out) for (int b : g.beams) bl.push_back(beams_[b].get());
+            g.opmd->set_dt(cur_dt_);
             g.opmd->write(n, t_, table.get(), bl, g.xi_stride, g.particle_stride);
         }
     }
@@ -351,11 +352,62 @@ void Simulation::write_checkpoint(int N) {
         W.o.close();
         if (!W.o) throw std::runtime_error("error writing checkpoint file " + fn);
     }
+    if (adaptive_) write_adapt_state(dir);   // before the rank file: complete = all rank files
     fs::rename(fn + ".tmp", fn);
     if (comm_.root()) {
         std::cout << "checkpoint " << dir << " (step " << N << ", t = " << t_ << ")" << std::endl;
         prune_checkpoints();
     }
+}
+
+// adaptive time step: dt of the last step, t history and this rank's gamma records
+void Simulation::write_adapt_state(const std::string& dir) const {
+    const std::string fn = dir + "/adapt_rank_" + std::to_string(comm_.rank()) + ".txt";
+    std::ofstream o(fn + ".tmp");
+    o << std::setprecision(17) << "dt_prev " << dt_prev_ << "\ngmin_init " << gmin_init_ << "\n";
+    for (const auto& [k, t] : thist_) o << "t " << k << " " << t << "\n";
+    for (const auto& [m, g] : lrec_) o << "rec " << m << " " << g << "\n";
+    o.close();
+    if (!o) throw std::runtime_error("cannot write " + fn);
+    fs::rename(fn + ".tmp", fn);
+}
+
+void Simulation::read_adapt_state(const std::string& dir) {
+    int ranks = 0;
+    {
+        std::ifstream meta(dir + "/checkpoint.txt");
+        std::string key;
+        while (meta >> key) if (key == "ranks") meta >> ranks;
+    }
+    auto read = [&](int r, bool own) {
+        const std::string fn = dir + "/adapt_rank_" + std::to_string(r) + ".txt";
+        std::ifstream in(fn);
+        if (!in) throw std::runtime_error("restart with time.adaptive: " + fn + " missing (checkpoint written without time.adaptive?)");
+        std::map<int, double> rec;
+        std::string key;
+        while (in >> key) {
+            if (key == "dt_prev") { double v; in >> v; if (own) { dt_prev_ = v; have_prev_ = true; } }
+            else if (key == "gmin_init") { double v; in >> v; if (own) gmin_init_ = v; }
+            else if (key == "t") { int k; double v; in >> k >> v; if (own) thist_[k] = v; }
+            else if (key == "rec") { int m; double v; in >> m >> v; rec[m] = v; }
+        }
+        return rec;
+    };
+    const int me = comm_.rank() < ranks ? comm_.rank() : 0;
+    read(me, true);
+    grec_.clear();
+    if (comm_.root()) {
+        grec_[thist_.begin()->first - 1] = gmin_init_;
+        for (int r = 0; r < ranks; ++r) {
+            const auto rec = read(r, false);
+            for (const auto& [m, g] : rec) {
+                if (m >= start_step_) continue;
+                auto it = grec_.find(m);
+                grec_[m] = (it == grec_.end()) ? g : std::min(it->second, g);
+            }
+        }
+    } else grec_[start_step_ - 1] = gmin_init_;
+    thist_[start_step_] = t_;
 }
 
 void Simulation::prune_checkpoints() {
@@ -448,7 +500,7 @@ void Simulation::read_checkpoint(const std::string& dir) {
 
 void Simulation::truncate_logs(int step) {
     // keep comments and the lines of steps < step; column of the step: beams.txt 1, others 0
-    const std::pair<const char*, int> logs[] = {{"beams.txt", 1}, {"laser.txt", 0}, {"ionization.txt", 0}};
+    const std::pair<const char*, int> logs[] = {{"beams.txt", 1}, {"laser.txt", 0}, {"ionization.txt", 0}, {"timestep.txt", 0}};
     for (const auto& l : logs) {
         const std::string fn = outdir_ + "/" + l.first;
         std::ifstream in(fn);

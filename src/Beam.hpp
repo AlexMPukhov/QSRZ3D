@@ -42,10 +42,15 @@ public:
     void deposit_impact(const View3D& imp) const;
     // advance by dt with the stored fields fld(xi, r, comp)  (layout FieldComp)
     // pond: laser ponderomotive arrays (local slice, node, {<a^2>, d/dr, d/dxi}); empty = no laser
-    void push(const View3D& fld, Real dt, const View3D& pond = View3D());
+    // Leapfrog with a variable step: the momenta live at t_{n-1/2}; the kick spans
+    // dt_kick = (dt_{n-1} + dt_n)/2 and the drift dt_drift = dt_n (equal for a constant dt).
+    void push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond = View3D());
     // one pusher step (move=false: explicit kick only, for the leapfrog start). Public because
     // CUDA extended lambdas may not live in private member functions.
-    void advance(const View3D& fld, Real dt, bool move, const View3D& pond);
+    void advance(const View3D& fld, Real dt_kick, Real dt_drift, bool move, const View3D& pond);
+    // adaptive time step: min over live particles of max(gamma, gthr) * m / |q|
+    // (omega_beta^2 = (|q|/m) n / (2 gamma)); +inf for rigid beams or with <beam>.adaptive_dt = 0
+    double min_gamma_eff(double gthr) const;
 
     BeamDiag diagnostics(Real t) const;
     // weighted sums for (global) diagnostics: S[0] = sum w, S[1..15] moments, S[16] = live count
@@ -57,6 +62,7 @@ public:
     void dump(const std::string& filename, int stride = 1) const;   // every stride-th live particle
     Real charge() const { return q_; }
     Real mass() const { return m_; }
+    bool adaptive_dt() const { return adaptive_dt_ && !rigid_; }
 
     // decomposition along xi: ownership by nearest slice, migration to the downstream rank
     std::vector<double> packed(const Kokkos::View<int*, HostSpace>* sel = nullptr) const;
@@ -103,6 +109,7 @@ private:
     void finish_init(std::vector<double>& local, const RefAcc& a);
     long np_global_ = 0;
     bool rigid_ = false;
+    bool adaptive_dt_ = true;   // <beam>.adaptive_dt: counts for the adaptive time step
     bool started_ = false;
     // analytic rigid beam: rho = q n0 exp(-|x_perp - c(xi)|^2 / 2 sigma^2) f(xi), c = centroid
     bool analytic_ = false;

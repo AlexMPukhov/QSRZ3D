@@ -33,6 +33,7 @@
 
 #include <fstream>
 #include <functional>
+#include <map>
 #include <array>
 #include <memory>
 #include <string>
@@ -160,6 +161,34 @@ private:
     std::ofstream ionlog_;
     std::vector<std::array<double, 4>> ion_acc_;   // per ionizable species: born w, born w p^2, tail z w, tail w
     void write_ion_diag(int n);
+    // ---- time step: fixed or adaptive (time.adaptive), end by step count or time.t_end
+    // Rank 0 chooses dt_n (and whether step n is the last) and sends it down the pipeline with
+    // the step-n message. Adaptive: dt_n = (2 pi / time.nt_per_betatron) / omega_beta with
+    // omega_beta^2 = n_max / (2 gamma_eff), gamma_eff = min over beams of max(gamma, gmin) m/|q|.
+    // gamma_eff is known globally only with a lag: every rank sends its local minimum after the
+    // push of step m to rank 0 (small messages against the pipeline), which uses step m = n - lag
+    // (lag >= P, default P + 1, so that rank 0 does not wait), extrapolated to t_{n+1} if it
+    // decreases. The result does not depend on timing, so it is reproducible.
+    bool adaptive_ = false;
+    double nbeta_ = 20, dt_max_ = 0, dt_min_ = 0, gthr_ = 2, adens_ = 0, t_end_ = -1;
+    int lag_ = 1;
+    double cur_dt_ = 0;                // dt of the current step n (pipeline message)
+    bool cur_last_ = false;            // step n is the last one (pipeline message)
+    double dt_prev_ = 0;               // dt of step n - 1 (variable-step leapfrog kick)
+    bool have_prev_ = false;
+    double gmin_init_ = 1e300;         // global gamma_eff at t_0 ("record -1")
+    std::map<int, double> grec_;       // rank 0: global gamma_eff after the push of step m (at t_{m+1})
+    std::map<int, double> lrec_;       // this rank's records
+    std::map<int, double> thist_;      // t_k at the beginning of step k
+    int next_rec_ = 0;                 // rank 0: next record to collect
+    double last_gamma_ = 0, last_dens_ = 0;   // values behind the last adaptive dt (log)
+    std::ofstream dtlog_;
+    double choose_dt(int n, bool& last);      // rank 0
+    void collect_records(int m);              // rank 0: records up to step m from all ranks
+    double local_gamma_eff() const;
+    double plasma_density_max(double z0, double z1) const;
+    void write_adapt_state(const std::string& dir) const;
+    void read_adapt_state(const std::string& dir);
 };
 
 } // namespace quarz

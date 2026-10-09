@@ -28,11 +28,15 @@ public:
     // non-blocking send of a buffer to dest; the previous send is completed first
     // (the buffer is kept alive inside Comm until the next call or wait_send)
     void isend(int dest, int tag, std::vector<double>&& buf);
-    void wait_send();
+    void wait_send();          // also completes the small sends below
+    // non-blocking send of a small buffer (several may be pending; used for the
+    // adaptive time step: rank r -> rank 0, against the pipeline direction)
+    void isend_small(int dest, int tag, std::vector<double>&& buf);
     // blocking receive of a message of unknown length
     std::vector<double> recv(int src, int tag);
     void barrier();
     double allreduce_max(double v);
+    double allreduce_min(double v);
 
     // write `bytes` at byte `offset` of file fn (created if missing); if set_size >= 0
     // the file is first set to that size (truncate/extend)
@@ -44,6 +48,9 @@ private:
     std::vector<double> sendbuf_;
     void* req_ = nullptr;   // MPI_Request (opaque here)
     bool pending_ = false;
+    struct Small { std::vector<double> buf; void* req = nullptr; };
+    std::vector<Small> small_;
+    void test_small(bool wait);
 };
 
 } // namespace quarz

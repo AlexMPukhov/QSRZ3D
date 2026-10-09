@@ -58,6 +58,23 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     dt_ = cfg.get_double("time.dt", 0.0);
     nsteps_ = cfg.get_int("time.steps", 0);
     t_ = cfg.get_double("time.start", 0.0);
+    // ---- end of the run and adaptive time step
+    t_end_ = cfg.get_double("time.t_end", -1.0);
+    if (t_end_ >= 0 && !cfg.has("time.steps")) nsteps_ = 1 << 28;   // the run ends at t_end
+    adaptive_ = cfg.get_bool("time.adaptive", false);
+    if (adaptive_) {
+        nbeta_ = cfg.get_double("time.nt_per_betatron", 20.0);
+        dt_max_ = cfg.get_double("time.dt_max", dt_ > 0 ? dt_ : 1e300);
+        dt_min_ = cfg.get_double("time.dt_min", 0.0);
+        gthr_ = cfg.get_double("time.adaptive_gamma_min", 2.0);
+        adens_ = cfg.get_double("time.adaptive_density", 0.0);
+        const int P0 = comm_.size();
+        lag_ = cfg.get_int("time.adaptive_lag", P0 > 1 ? P0 + 1 : 1);
+        if (nbeta_ <= 0 || dt_max_ <= 0 || dt_min_ < 0 || dt_min_ > dt_max_)
+            throw std::runtime_error("time.adaptive: need time.nt_per_betatron > 0 and 0 <= time.dt_min <= time.dt_max");
+        if (lag_ < P0) throw std::runtime_error("time.adaptive_lag must be >= the number of MPI ranks");
+        if (cfg.has("laser.a0")) throw std::runtime_error("time.adaptive is not available with a laser (fixed dt of the envelope solver)");
+    } else if (dt_ <= 0 && nsteps_ > 0) throw std::runtime_error("time.dt must be > 0 (or set time.adaptive = 1)");
     out_every_ = cfg.get_int("output.every", 1);
     slice_bins_ = cfg.get_int("output.beam_slices", 0);
     {
@@ -207,6 +224,91 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     // ---- output groups (main output and diag.names), checkpoints, restart
     setup_output();
     if (restarted_) read_checkpoint(restart_path_);
+    // ---- time step bookkeeping
+    if (adaptive_ && restarted_) read_adapt_state(restart_path_);
+    else {
+        thist_[start_step_] = t_;
+        if (adaptive_) {
+            double g = local_gamma_eff();
+            gmin_init_ = comm_.allreduce_min(g);
+            grec_[start_step_ - 1] = gmin_init_;   // gamma_eff at t_start
+        }
+    }
+    next_rec_ = start_step_;
+    if (adaptive_ && comm_.root()) {
+        dtlog_.open(outdir_ + "/timestep.txt", std::ios::out | (restarted_ ? std::ios::app : std::ios::trunc));
+        if (!restarted_ || dtlog_.tellp() == 0)
+            dtlog_ << "# step t dt gamma_eff n_max   (adaptive: dt = 2 pi / (" << nbeta_
+                   << " omega_beta), omega_beta^2 = n_max / (2 gamma_eff), gamma_eff = gamma m/|q| of the slowest beam particle)\n";
+        std::cout << "Adaptive time step: " << nbeta_ << " steps per betatron period, dt in [" << dt_min_ << ", " << dt_max_
+                  << "], gamma >= " << gthr_ << ", lag " << lag_ << " steps\n";
+    }
+}
+
+// ---------------------------------------------------------------------------
+// time step
+double Simulation::local_gamma_eff() const {
+    double g = 1e300;
+    for (const auto& b : beams_) g = std::min(g, b->min_gamma_eff(gthr_));
+    return std::min(g, 1e300);
+}
+
+double Simulation::plasma_density_max(double z0, double z1) const {
+    if (adens_ > 0) return adens_;
+    double ne = 0, np = 0;
+    for (const auto& s : species_) {
+        const double n = std::abs(s->charge()) * s->max_density(z0, z1, grid_->R);
+        if (s->charge() < 0) ne += n; else np += n;
+    }
+    return ne > 0 ? ne : np;   // electrons; a pure ion channel: its charge density
+}
+
+void Simulation::collect_records(int m) {
+    const int P = comm_.size();
+    for (; next_rec_ <= m; ++next_rec_) {
+        const int k = next_rec_;
+        double g = lrec_.count(k) ? lrec_[k] : 1e300;
+        for (int r = 1; r < P; ++r) {
+            const auto v = comm_.recv(r, 31000 + k % 1500);
+            if (v.size() != 2 || static_cast<int>(v[0]) != k) throw std::runtime_error("adaptive time step: record out of order");
+            g = std::min(g, v[1]);
+        }
+        grec_[k] = g;
+    }
+}
+
+double Simulation::choose_dt(int n, bool& last) {
+    last = (n >= nsteps_) || (t_end_ >= 0 && t_ >= t_end_ - 1e-9 * std::max(1.0, std::abs(t_end_)));
+    double dt = dt_;
+    if (adaptive_) {
+        const int first = grec_.begin()->first;          // start_step - 1 (gamma at t_start)
+        const int m = std::max(n - lag_, first);
+        if (m >= next_rec_) collect_records(m);
+        const double G = grec_.at(m);
+        double gam = G;
+        if (G < 1e299) {
+            // extrapolate a decreasing gamma_eff from t_{m+1} to t_{n+1}
+            if (grec_.count(m - 1) && thist_.count(m + 1) && thist_.count(m)) {
+                const double rate = (G - grec_.at(m - 1)) / (thist_.at(m + 1) - thist_.at(m));
+                const double tau = t_ + (have_prev_ ? dt_prev_ : 0.0) - thist_.at(m + 1);
+                if (rate < 0 && tau > 0) gam = std::max(0.5 * G, G + rate * tau);
+            }
+            const double dpre = have_prev_ ? dt_prev_ : 0.0;
+            const double xmax = box_.xi_min + (box_.nxi - 1) * box_.dxi;
+            const double nmax = plasma_density_max(t_ - xmax, t_ + dpre - box_.xi_min);
+            dt = nmax > 0 ? (6.283185307179586 / nbeta_) * std::sqrt(2 * gam / nmax) : dt_max_;
+            last_dens_ = nmax;
+        } else dt = dt_max_;
+        last_gamma_ = gam;
+        dt = std::min(dt_max_, std::max(dt_min_, dt));
+        if (!(dt > 0) || dt >= 1e299) throw std::runtime_error("adaptive time step: no finite dt (no beam and no time.dt_max?)");
+    }
+    if (t_end_ >= 0 && !last) {   // land exactly on t_end, without a tiny last step
+        const double rem = t_end_ - t_;
+        if (dt >= rem * (1 - 1e-12)) dt = rem;
+        else if (dt > 0.5 * rem) dt = 0.5 * rem;
+    }
+    return dt;
 }
 
 Simulation::~Simulation() = default;
@@ -622,6 +724,8 @@ int Simulation::subslices(Real dxi) const {
 std::vector<double> Simulation::make_message(int n) {
     std::vector<double> m;
     m.push_back(static_cast<double>(n));
+    m.push_back(cur_dt_);
+    m.push_back(cur_last_ ? 1.0 : 0.0);
     for (size_t b = 0; b < beams_.size(); ++b) {
         m.push_back(static_cast<double>(outbox_[b].size() / 7));
         m.insert(m.end(), outbox_[b].begin(), outbox_[b].end());
@@ -1010,15 +1114,19 @@ void Simulation::run() {
     const int P = comm_.size(), rank = comm_.rank();
     if (start_step_ > nsteps_ && comm_.root())
         std::cout << "restart at step " << start_step_ << " > time.steps = " << nsteps_ << ": nothing to do\n";
+    int n_last = start_step_ - 1;
     for (int n = start_step_; n <= nsteps_; ++n) {
         Kokkos::Timer timer;
+        if (rank == 0) cur_dt_ = choose_dt(n, cur_last_);
         // ---- message from the upstream rank: beam particles, plasma state, B+, guard
         std::vector<double> msg;
         size_t off = 0;
         if (rank > 0) {
             msg = comm_.recv(rank - 1, n % 30000);
             if (static_cast<int>(msg[0]) != n) throw std::runtime_error("pipeline message out of order");
-            off = 1;
+            cur_dt_ = msg[1];
+            cur_last_ = msg[2] != 0;
+            off = 3;
             for (auto& b : beams_) {
                 const size_t np = static_cast<size_t>(msg[off]);
                 ++off;
@@ -1043,8 +1151,9 @@ void Simulation::run() {
         write_group_outputs(n);
 
         if (comm_.root()) {
-            std::cout << "step " << std::setw(6) << n << "  t = " << std::setw(10) << t_ << "   sweep " << std::fixed
-                      << std::setprecision(3) << tf << " s" << std::defaultfloat;
+            std::cout << "step " << std::setw(6) << n << "  t = " << std::setw(10) << t_;
+            if (adaptive_ && !cur_last_) std::cout << "  dt = " << std::setw(10) << cur_dt_;
+            std::cout << "   sweep " << std::fixed << std::setprecision(3) << tf << " s" << std::defaultfloat;
             if (P > 1) std::cout << " (rank 0 of " << P << ", pipelined)";
             if (lost) std::cout << "   (" << lost << " plasma particles removed as trapped)";
             if (nsub > 0) std::cout << "   (" << static_cast<long>(nsub) << " extra sub-slices)";
@@ -1054,19 +1163,43 @@ void Simulation::run() {
                       << " plasma particles removed as trapped" << std::endl;
         }
 
+        if (adaptive_ && comm_.root() && !cur_last_)
+            dtlog_ << n << " " << std::setprecision(12) << t_ << " " << cur_dt_ << " " << last_gamma_ << " " << last_dens_ << std::endl;
+
         // the last step pushes the beams only for a final checkpoint (the state of step n + 1)
-        const bool chk = (chk_every_ > 0 && (n + 1) % chk_every_ == 0 && n < nsteps_) || (n == nsteps_ && chk_at_end_);
-        if (n < nsteps_ || chk) {
+        const bool last = cur_last_;
+        const bool chk = (chk_every_ > 0 && (n + 1) % chk_every_ == 0 && !last) || (last && chk_at_end_);
+        if (!have_prev_) { dt_prev_ = cur_dt_; have_prev_ = true; }
+        if (!last || chk) {
+            const Real dkick = Real(0.5) * (dt_prev_ + cur_dt_), ddrift = cur_dt_;
             for (size_t b = 0; b < beams_.size(); ++b) {
-                beams_[b]->push(fld, dt_, laser_ ? laser_->ponderomotive() : View3D());
+                beams_[b]->push(fld, dkick, ddrift, laser_ ? laser_->ponderomotive() : View3D());
                 if (P > 1) {
                     auto out = beams_[b]->extract_outgoing();
                     if (rank < P - 1) outbox_[b].insert(outbox_[b].end(), out.begin(), out.end());
                 }
             }
-            t_ += dt_;
+            t_ += cur_dt_;
+            dt_prev_ = cur_dt_;
+            thist_[n + 1] = t_;
+            if (adaptive_ && !last) {   // record for the adaptive time step of later steps
+                const double g = local_gamma_eff();
+                lrec_[n] = g;
+                if (rank > 0) comm_.isend_small(0, 31000 + n % 1500, std::vector<double>{double(n), g});
+            }
         }
         if (chk) write_checkpoint(n + 1);
+        n_last = n;
+        if (last) break;
+    }
+    // rank 0 collects the records it did not need, so that all small sends complete
+    if (adaptive_ && rank == 0) {
+        if (n_last - 1 >= next_rec_) collect_records(n_last - 1);
+        // the global gamma_eff after every push (for checking the step choice afterwards)
+        std::ofstream g(outdir_ + "/gamma_records.txt", std::ios::out | (restarted_ ? std::ios::app : std::ios::trunc));
+        if (!restarted_) g << "# step m, t_{m+1}, min gamma_eff over all beams after the push of step m\n";
+        for (const auto& [m, v] : grec_)
+            if (m >= start_step_ && thist_.count(m + 1)) g << m << " " << std::setprecision(12) << thist_.at(m + 1) << " " << v << "\n";
     }
     comm_.wait_send();
     Kokkos::fence();

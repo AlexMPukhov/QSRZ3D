@@ -47,7 +47,7 @@ for root, _, files in os.walk(B):
             d = rel(ka, kb)
         elif f.startswith("axis_"):
             d = rel(np.loadtxt(pa, comments="#"), np.loadtxt(pb, comments="#"))
-        elif f in ("beams.txt", "laser.txt", "ionization.txt"):
+        elif f in ("beams.txt", "laser.txt", "ionization.txt", "timestep.txt"):
             c = 2 if f == "beams.txt" else 1
             la = {tuple(l.split()[:c]): l.split()[c:] for l in open(pa) if l.strip() and l[0] != "#"}
             lb = [l.split() for l in open(pb) if l.strip() and l[0] != "#"]

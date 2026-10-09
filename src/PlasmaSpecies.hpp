@@ -78,6 +78,8 @@ public:
 
     const std::string& name() const { return name_; }
     Real charge() const { return q_; }
+    // maximum density (units of n0) for lab z in [z0, z1], r in [0, R] (sampled; adaptive time step)
+    double max_density(double z0, double z1, double R) const;
     Real mass() const { return m_; }
     bool mobile() const { return mobile_; }
     bool frozen() const { return frozen_; }

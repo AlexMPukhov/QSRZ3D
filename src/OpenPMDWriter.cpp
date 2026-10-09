@@ -30,6 +30,8 @@ OpenPMDWriter::OpenPMDWriter(const Config&, const std::string&, const RadialGrid
 OpenPMDWriter::~OpenPMDWriter() = default;
 bool OpenPMDWriter::available() { return false; }
 void OpenPMDWriter::write(int, double, const FieldTable*, const std::vector<const Beam*>&, int, int) {}
+void OpenPMDWriter::set_dt(double dt) { (void)dt;  }
+
 void OpenPMDWriter::close() {}
 std::string OpenPMDWriter::description() const { return {}; }
 
@@ -182,6 +184,8 @@ void OpenPMDWriter::Impl::open() {
 OpenPMDWriter::~OpenPMDWriter() {
     try { close(); } catch (...) {}
 }
+
+void OpenPMDWriter::set_dt(double dt) { impl_->dt = dt;  }
 
 void OpenPMDWriter::close() {
     if (impl_ && impl_->series && !impl_->closed) {
