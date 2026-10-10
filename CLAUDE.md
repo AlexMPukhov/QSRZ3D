@@ -76,7 +76,7 @@ Package for delivery (includes .git, so the history survives the container):
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
 - Never edit `run_validation.sh` while it is running (bash reads scripts incrementally).
 
-## Status (2026-10-09)
+## Status (2026-10-10)
 Done and validated (README §7, `validation/reference_full.txt`):
 - core solver, non-uniform grid, m = 1 mode, mobile ions, parsed profiles, MPI, openPMD,
   CUDA compiles and runs on a Blackwell GB202 GPU (Thomas, 2026-10-06: ~50x vs one thread of a
@@ -226,7 +226,7 @@ Done and validated (README §7, `validation/reference_full.txt`):
   Section 20: ion channel s_r = sin(kappa theta) 1e-6 (e, mu, pbar kappa 90), gamma-3 witness in a
   wake with a = 2 vs Python RK4 second order (1.3e-3 -> 3.1e-4), scattering slope 0.999999, restart
   and 2 ranks bit-identical. Cost: beam-only run 17 % longer. Not included: Stern-Gerlach force,
-  Sokolov-Ternov.
+  Sokolov-Ternov. Full suite 20/20, CUDA compiles.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
