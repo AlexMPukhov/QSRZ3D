@@ -202,6 +202,9 @@ Done and validated (README §7, `validation/reference_full.txt`):
   <p^2> = D t within statistics, ion-channel emittance growth D/sqrt(2 gamma) to 0.8 %. Section 18
   runs with 1 thread (threaded deposits change state bits -> other random numbers). CUDA compiles
   (struct Scatter must be public: extended lambdas cannot capture private member types).
+  DEFAULT ON (Alexander 2026-10-10: on if cheap) for non-rigid beams when units.n0_cm3 is given;
+  cost: beam.push 2.0x -> 1.9x after one-log optimisation (1e6 particles, 1 thread), ~0.2 % of an
+  AWAKE-size run. Full suite 18/18 with the default on; CUDA compiles.
   Observation: scatter_channel.in (pure ion channel, no electrons) has MPI-vs-serial field diffs of
   3.6e-16 in bth even WITHOUT scattering (particles identical) - pre-existing, not investigated.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine

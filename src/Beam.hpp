@@ -60,9 +60,10 @@ public:
         Real bmax_i = 1;         // ion screening length (k_p^-1 if fully ionized, else Thomas-Fermi), c/omega_p
         Real a0 = 0;             // Bohr radius (bound electrons), c/omega_p
         Real RN = 0, lamC = 0;   // nuclear radius, reduced Compton wavelength / (m/m_e), c/omega_p
+        Real lnbmax_i = 0, lnRN = 0, lnlamC = 0, lna0 = 0;   // their logarithms
         uint64_t seed = 1;
     };
-    bool scattering() const { return sc_.on; }
+    bool scattering() const { return sc_.on && !rigid_; }
     std::string scattering_description() const;
     // adaptive time step: min over live particles of max(gamma, gthr) * m / |q|
     // (omega_beta^2 = (|q|/m) n / (2 gamma)); +inf for rigid beams or with <beam>.adaptive_dt = 0

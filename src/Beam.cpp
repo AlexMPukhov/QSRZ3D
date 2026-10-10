@@ -41,10 +41,17 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
     }
     rr_ *= cfg.get_double("pusher.rr_scale", 1.0);
     // ---- multiple Coulomb scattering on the plasma (small-angle, Gaussian per step)
-    sc_.on = cfg.get_bool(name + ".scattering", false);
+    // on by default when the physical density is known (cheap: a few % of a beam push, negligible
+    // against the plasma sweep in realistic runs); <beam>.scattering = 0 switches it off
+    {
+        const double n0 = cfg.get_double("units.n0_cm3", cfg.get_double("pusher.rr_n0_cm3", 0.0));
+        const bool expl = cfg.has(name + ".scattering");
+        sc_.on = cfg.get_bool(name + ".scattering", n0 > 0 && !rigid_);
+        if (sc_.on && !(n0 > 0)) throw std::runtime_error(name + ".scattering needs the plasma density units.n0_cm3");
+        if (sc_.on && rigid_ && !expl) sc_.on = false;
+    }
     if (sc_.on) {
         const double n0 = cfg.get_double("units.n0_cm3", cfg.get_double("pusher.rr_n0_cm3", 0.0));
-        if (!(n0 > 0)) throw std::runtime_error(name + ".scattering needs the plasma density units.n0_cm3");
         const double re = 2.8179403262e-13;                                // cm
         const double kp = 5.64146e4 * std::sqrt(n0) / 2.99792458e10;     // 1/cm
         const double qm = q_ / m_;
@@ -58,6 +65,10 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
         sc_.bmax_i = (sc_.zeta >= sc_.Z) ? 1.0 : std::min(1.0, 0.885 * a0 * std::pow(sc_.Z, -1.0 / 3.0) * kp);
         sc_.RN = 1.2e-13 * std::cbrt(A) * kp;                             // nuclear radius
         sc_.lamC = 3.8615926796e-11 * kp / m_;                            // hbar / (m c), m in m_e
+        sc_.lnbmax_i = std::log(sc_.bmax_i);
+        sc_.lnRN = std::log(sc_.RN);
+        sc_.lnlamC = std::log(sc_.lamC);
+        sc_.lna0 = std::log(sc_.a0);
         sc_.Li = cfg.get_double("scattering.coulomb_log_ions", -1.0);
         sc_.Le = cfg.get_double("scattering.coulomb_log_electrons", -1.0);
         sc_.seed = static_cast<uint64_t>(cfg.get_int("scattering.seed", 1)) * 0x9e3779b97f4a7c15ULL ^
@@ -722,11 +733,12 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
             };
             const Real ne = Kokkos::fmax(bild(1), Real(0)), ni = Kokkos::fmax(bild(2), Real(0));   // D_NE0, D_NI0
             const Real pp = Kokkos::sqrt(push::dot(u, u));
-            const Real g = Kokkos::sqrt(Real(1) + pp * pp);
-            const Real Li = sc.Li > 0 ? sc.Li : Kokkos::log(sc.bmax_i / Kokkos::fmax(sc.lamC / g, sc.RN));
-            const Real bmin_e = sc.lamC * Kokkos::sqrt(Real(2) / g);
-            const Real Le = sc.Le > 0 ? sc.Le : Kokkos::log(Real(1) / bmin_e);
-            const Real Lb = sc.Le > 0 ? sc.Le : Kokkos::log(Kokkos::fmax(sc.a0, bmin_e) / bmin_e);
+            // Coulomb logarithms from one log(gamma) (lnb* = precomputed logs of the lengths)
+            const Real lg = Kokkos::log(Kokkos::sqrt(Real(1) + pp * pp));
+            const Real Li = sc.Li > 0 ? sc.Li : sc.lnbmax_i - Kokkos::fmax(sc.lnlamC - lg, sc.lnRN);
+            const Real lnbe = sc.lnlamC + Real(0.5) * (Real(0.6931471805599453) - lg);   // ln(lamC sqrt(2/gamma))
+            const Real Le = sc.Le > 0 ? sc.Le : -lnbe;
+            const Real Lb = sc.Le > 0 ? sc.Le : Kokkos::fmax(sc.lna0 - lnbe, Real(0));
             const Real D = sc.kappa * (sc.Z * sc.Z * ni * Kokkos::fmax(Li, Real(0)) + ne * Kokkos::fmax(Le, Real(0)) +
                                        (sc.Z - sc.zeta) * ni * Kokkos::fmax(Lb, Real(0)));
             if (D > Real(0)) {

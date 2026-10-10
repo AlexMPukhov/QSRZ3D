@@ -225,7 +225,10 @@ schemes agree with each other to ≤ 10⁻⁷.
 from the momentum before the push and applied implicitly as in the note. To
 enable it, set `pusher.rr_n0_cm3` to the physical plasma density.
 
-**Multiple Coulomb scattering** on the plasma (`<beam>.scattering = 1`, needs `units.n0_cm3`).
+**Multiple Coulomb scattering** on the plasma: on by default for every non-rigid beam when the
+physical density `units.n0_cm3` is given (`<beam>.scattering = 0` switches it off; without
+`units.n0_cm3` it is off). Cost: about twice the time of a beam push without it (1 thread, 10⁶
+particles), i.e. a few per mille of a typical run, whose time is spent in the plasma sweep.
 Each push adds a Gaussian random kick to p_x and p_y (elastic: |p| is kept) with, per axis,
 
   d⟨p_x²⟩/dt = k_p r_e (q/m)² [Z² n_i L_i + n_e L_e + (Z − ζ) n_i L_b]
@@ -617,7 +620,7 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `pusher.beam` | `vay` | beam momentum pusher: `vay` \| `hc` \| `imp` \| `imp_rr` \| `boris`. Can be overridden per beam with `<beam>.pusher`. |
 | `pusher.rr_n0_cm3` | 0 | plasma density in cm⁻³. With `imp_rr`, a value > 0 switches on radiation reaction. |
 | `pusher.rr_scale` | 1 | multiplies the radiation-reaction strength (testing only) |
-| `<beam>.scattering` | 0 | multiple Coulomb scattering on the plasma ions and electrons (needs `units.n0_cm3`), see §1 |
+| `<beam>.scattering` | 1 if `units.n0_cm3` is given | multiple Coulomb scattering on the plasma ions and electrons (needs `units.n0_cm3`), see §1. The default Z = 1 is hydrogen: set `scattering.Z`, `ion_charge` for other gases |
 | `scattering.Z`, `scattering.ion_charge`, `scattering.A` | 1, Z, 1 (2Z for Z > 1) | nuclear charge, ion charge state, mass number of the background ions |
 | `scattering.coulomb_log_ions`, `scattering.coulomb_log_electrons` | computed | fixed Coulomb logarithms instead of the per-particle formulas |
 | `scattering.factor`, `scattering.seed` | 1, 1 | multiplies the scattering rate (testing only); random seed |
