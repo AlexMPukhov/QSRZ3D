@@ -919,6 +919,30 @@ frequent small dumps and rare full dumps can be combined (§6):
 - **Python helpers.** `tools/quarz_read.py` reads all of these;
   `xz_plane()` builds the field in the (ξ, x) plane from the modes.
   `tools/plot_fields.py` makes a quick-look PNG.
+- **GUI** (optional, `tools/quarz_gui.py`): an input-deck editor with run control and live
+  plots in the web browser, for runs on a desktop or notebook. Needs only Python 3 and numpy
+  (no GUI toolkit; the page has no external dependencies and works offline):
+
+  ```bash
+  python3 tools/quarz_gui.py examples/blowout_basic.in     # opens http://127.0.0.1:8765/?token=...
+  python3 tools/quarz_gui.py run.in --no-browser --port 9000  # remote: ssh -L 9000:127.0.0.1:9000 host
+  ```
+
+  - *Deck*: edit, open, save (Ctrl-S); examples from `examples/`, `paper/inputs/`, `validation/`;
+    extra `key = value` overrides that are passed on the command line but not saved.
+  - *Run*: OpenMP threads, MPI ranks (`mpirun`), Run/Stop, progress bar and the log. The deck is
+    saved before every run and run in its own directory.
+  - *Live frames*: the GUI adds a diagnostic group `gui` on the command line
+    (`diag.names = … gui`, `diag.gui.every`, `.fields`, `.rmax`, `.xi_stride`; the deck file is not
+    changed), so the live output stays small whatever the main output does. Its frames appear in
+    `<output.dir>/gui/` while the run goes on (with MPI a frame is shown once the last rank has
+    written it).
+  - *Plots*: 2D map of a field in (ξ, r) (optionally mirrored to ±r, head on the right, colour
+    scale clipped to 99.5 % of the values so that a closure spike does not hide the rest), a cut
+    along ξ at any r and a radial cut at any ξ (click on the map to set both), a frame slider with
+    playback, and the beam evolution from `beams.txt` (⟨γ⟩, σ_γ, r_rms, ε_n, …). With `modes = 1`
+    the fields are shown in the plane θ = 0. *Browse output* shows a finished run.
+  - The server listens on 127.0.0.1 only, and every request needs the random token of the URL.
 
 ## 7. Validation (OpenMP backend, 2 cores)
 
@@ -1060,6 +1084,11 @@ files with the main output):
 | Decelerating witness inside a rigid driver, γ 50 → 6, 32 steps per period, lag 1 and 6 | after the first lag steps, Δt ≤ 1.0003 × the step from the true γ at t_{n+1} (extrapolation works); during the first 6 steps up to 1.053 × (no rate known yet) |
 | Restart (serial; 2 ranks → 2 ranks) | bit-identical, incl. `timestep.txt` |
 | 2 ranks (lag 3) vs serial with lag 3 | fields and particles bit-identical, same Δt sequence |
+
+**GUI server** (section 17, `gui_check.py`, no browser): a run started through the API finishes and
+writes its `gui` frames every 2nd step with the requested fields, r ≤ 1 and every 2nd slice; the
+on-axis cut served equals the field file exactly; the 2D map has the requested size and is finite;
+the beam log has every step; a request without the token is refused (HTTP 403).
 
 **MPI vs serial** (`validation/cmp_runs.py` compares every output file; serial runs with
 `beams.xi_shape = ngp`, one OpenMP thread per rank, 2 cores; P = 3, 4 oversubscribed):
@@ -1227,4 +1256,4 @@ comparison, the blowout on the stretched grid, and the SMI run.
 | `src/Profiles.*`, `src/Config.*` | density profiles, input parser |
 | `tests/test_solvers.cpp`, `tests/test_pushers.cpp`, `tests/test_parser.cpp`, `tests/test_profiles.cpp` | unit tests (run by `ctest`) |
 | `validation/` | physics validation inputs and scripts |
-| `tools/` | Python readers and plotting (optional) |
+| `tools/` | Python readers and plotting (optional); `quarz_gui.py` + `quarz_gui.html`: browser GUI |

@@ -147,3 +147,9 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2, 4], max rel diff 0.00e+00
   timestep.txt identical  OK
  2 ranks, restart (expected: bit-identical):
   14 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+== 17. GUI server (tools/quarz_gui.py, no browser) ==
+  run finished (exit 0), frames [0, 2, 4, 6], fields ['psi', 'ez', 'ne']  OK
+  on-axis cut vs the field file: max difference 0.0e+00, r_max of the frame 1.016, 101 of the box slices  OK
+  2D map: 50 x 50 values, finite: True  OK
+  beams: witness 7 steps  OK
+  request without the token: HTTP 403  OK

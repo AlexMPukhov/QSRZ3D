@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..16 (default: all)
+#   sections   numbers 1..17 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 16)}
+SECTIONS=${*:-$(seq 1 17)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -341,6 +341,12 @@ sec16() {
     fi
     unset OMP_NUM_THREADS
     rm -rf out_adapt_ramp out_ad_*
+}
+
+sec17() {
+    echo "== 17. GUI server (tools/quarz_gui.py, no browser) =="
+    OMP_NUM_THREADS=1 python3 gui_check.py betatron.in $QS $(( 20000 + $$ % 20000 ))
+    rm -rf out_gui out_gui_deck.in
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

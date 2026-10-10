@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -183,6 +183,15 @@ Done and validated (README §7, `validation/reference_full.txt`):
 - Pitfall (2026-10-09): disk allowance full -> runs died (SIGBUS) and left /dev/shm/sem.OMPIO_*;
   afterwards every run hung in MPI_File_open (sharedfp sem_wait). Fix: rm /dev/shm/sem.OMPIO_*.
   Old scratch runs in /tmp/claude-0 (sub, rst, mem: 16 GB) were deleted.
+- GUI (2026-10-10, Alexander: optional GUI for desktop/notebook runs): tools/quarz_gui.py (stdlib
+  http.server + numpy) + tools/quarz_gui.html (no external JS; canvas plots). Deck editor, Run/Stop
+  (threads, MPI ranks), log, live frames via an extra diag group 'gui' passed as command-line
+  overrides (deck unchanged; old gui frames deleted at run start), 2D map (r resampled to uniform,
+  xi thinned by block max |f|, clip 99.5 %, mirror, head right), xi cut at r, radial cut at xi (click
+  map), frame slider/play, beams.txt plot (stale file hidden during a run: MPI merges at the end).
+  127.0.0.1 only + token. MPI frames shown when rank-0 step >= frame + P. Checked with Playwright
+  screenshots (serial, 2 ranks, error deck). Validation section 17 (gui_check.py, headless API).
+  No tkinter in this container -> browser approach on purpose.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis
