@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..18 (default: all)
+#   sections   numbers 1..19 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 18)}
+SECTIONS=${*:-$(seq 1 19)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -373,6 +373,43 @@ sec18() {
     fi
     unset OMP_NUM_THREADS
     rm -rf out_scat_* out_sc_*
+}
+
+sec19() {
+    echo "== 19. two-stage runs: driver box -> rear boundary file -> witness box =="
+    export OMP_NUM_THREADS=1
+    local S1="xi.max=5 beams=driver" S2="xi.min=5.01 beams=witness"
+    local N="driver.nparticles=$(q 200000 50000)"
+    # (a) same time step: the stage-2 box reproduces the single run exactly
+    $QS boundary.in $N output.dir=out_bnd_A > /dev/null
+    $QS boundary.in $N $S1 boundary.write=out_bnd_a.bin output.dir=out_bnd_A1 > /dev/null
+    $QS boundary.in $N $S2 boundary.read=out_bnd_a.bin output.dir=out_bnd_A2 > /dev/null
+    echo " (a) rigid driver, same dt (expected: bit-identical):"
+    python3 bnd_check.py fields out_bnd_A out_bnd_A2 6 6
+    # (b) soft witness (gamma 30) with dt/4 in stage 2; rigid driver -> the boundary state is constant
+    local W="witness.gamma=30 witness.emit_n=0.01 witness.sigma_r=0.1"
+    $QS boundary.in $N $W time.dt=2.5 time.steps=24 output.every=24 output.beam_every=24 output.dir=out_bnd_B > /dev/null
+    $QS boundary.in $N $W $S2 boundary.read=out_bnd_a.bin time.dt=2.5 time.steps=24 output.every=24 output.beam_every=24 \
+        output.dir=out_bnd_B2 > /dev/null
+    echo " (b) stage 2 with dt/4 between the stage-1 steps, rigid driver (expected: bit-identical):"
+    python3 bnd_check.py fields out_bnd_B out_bnd_B2 24 24
+    # (c) evolving driver (gamma 300): stage 1 with dt = 10, stage 2 with dt = 2.5, vs single runs
+    local C="$W driver.rigid=0 driver.gamma=300 driver.emit_n=0.3"
+    $QS boundary.in $N $C time.dt=2.5 time.steps=24 output.every=24 output.beam_every=24 output.dir=out_bnd_ref > /dev/null
+    $QS boundary.in $N $C time.dt=10 time.steps=6 output.every=6 output.beam_every=6 output.dir=out_bnd_coarse > /dev/null
+    $QS boundary.in $N $C $S1 boundary.write=out_bnd_c.bin output.dir=out_bnd_C1 > /dev/null
+    $QS boundary.in $N $C $S2 boundary.read=out_bnd_c.bin time.dt=2.5 time.steps=24 output.every=24 output.beam_every=24 \
+        output.dir=out_bnd_two > /dev/null
+    echo " (c) evolving driver: single run dt = 2.5 (reference) vs two-stage (driver dt = 10, witness dt = 2.5) vs single dt = 10:"
+    python3 bnd_check.py witness out_bnd_ref out_bnd_two out_bnd_coarse
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 2 $QS boundary.in $N $S1 boundary.write=out_bnd_p.bin output.dir=out_bnd_P1 > /dev/null
+        $MPIRUN 2 $QS boundary.in $N $S2 boundary.read=out_bnd_p.bin output.dir=out_bnd_P2 > /dev/null
+        echo " (a) with 2 ranks in each stage (expected: bit-identical to the single serial run):"
+        python3 bnd_check.py fields out_bnd_A out_bnd_P2 6 6
+    fi
+    unset OMP_NUM_THREADS
+    rm -rf out_bnd_*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

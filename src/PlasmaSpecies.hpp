@@ -64,6 +64,7 @@ public:
 
     // ---- ionization (species with <name>.element or <name>.ionization_energies_eV)
     bool ionizable() const { return ionizable_; }
+    int ab_order() const { return ab_.order; }
     const IonSpeciesInfo& ion_info() const { return ion_; }
     void set_laser(Real k0, bool circular) { ion_.P.laser = true; ion_.P.k0 = k0; ion_.P.circular = circular; }
     // slice kl (global k) of time step `step`: ionization with the fields f of the slice, beam impact

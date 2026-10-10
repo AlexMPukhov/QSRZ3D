@@ -439,6 +439,35 @@ for containers with a restricted CPU set.
   the sources and the tridiagonal solves;
 - batching independent runs (parameter scans) into one launch.
 
+### Two-stage runs: a stiff driver and a soft witness far behind it
+
+A heavy driver (e.g. the AWAKE proton bunch) evolves slowly and can be pushed with large time
+steps; a soft witness far behind it (low-γ electrons or positrons) needs much smaller ones.
+Instead of running the whole box with the small step:
+
+1. **Stage 1**, the driver box ending before the witness, with the large step and
+   `boundary.write = drive.bnd`. The last rank pushes the plasma through its last slice as well and
+   appends, every step, the plasma state leaving the box to the file: exactly the message the
+   pipeline passes from one rank to the next (particles with momenta, weights and Adams–Bashforth
+   history, and B⊥ as the starting guess of the next solve).
+2. **Stage 2**, the witness box, starting at the next slice (`xi.min` = stage-1 `xi.max` + `xi.step`,
+   checked), with `boundary.read = drive.bnd`, its own beams and any time step (also adaptive).
+   At each of its times t it takes the stage-1 state interpolated linearly in t between the stored
+   steps (counts, flags and charge states from the nearer record; without interpolation if the
+   particle numbers change, e.g. by ionization). The plasma density profile still refers to the
+   head of the stage-1 box (z = t − ξ_head), as in a single run.
+
+The radial grid, `xi.step`, `modes`, the mobile species and `pusher.ab_order` must be those of
+stage 1 (checked). Stage 2 sees no beam from stage 1: the driver must end inside the stage-1 box
+(stage 2 warns otherwise). The witness cannot act back on the driver's plasma, which is exact in
+the quasi-static model (information flows only backwards in ξ). Not available with a laser.
+
+```bash
+quarz awake.in xi.max=600 beams=protons boundary.write=drive.bnd time.dt=200        # stage 1
+quarz awake.in xi.min=600.015625 xi.max=640 beams=witness boundary.read=drive.bnd \
+      time.adaptive=1 output.dir=witness                                            # stage 2
+```
+
 ### MPI: decomposition along ξ with pipelined time steps
 
 ```
@@ -830,6 +859,8 @@ frequent small dumps and rare full dumps can be combined (§6):
 | `checkpoint.keep` | 2 | keep the newest n complete checkpoints, delete older ones (0 = keep all) |
 | `checkpoint.dir` | `<output.dir>/checkpoints` | directory of the checkpoints |
 | `restart.from` | — | restart from a checkpoint directory (`.../chk_NNNNNN`) or `latest` (newest complete checkpoint in `checkpoint.dir`) |
+| `boundary.write` | — | stage 1 of a two-stage run: file for the plasma state leaving the box, every step (see "Two-stage runs") |
+| `boundary.read` | — | stage 2: take the plasma entering the box from this file instead of fresh plasma |
 
 **Physical units.** At plasma density n₀ [cm⁻³]:
 
@@ -1122,6 +1153,15 @@ measurable, fixed Coulomb logarithms):
 | Zero-emittance witness (n_b = 10⁻⁸) in a uniform plasma, t = 100, 10⁵ particles; Z = 1 and Z = 3, ζ = 1 | ⟨p_x²⟩/(D t) = 0.9972 / 0.9970, ⟨p_y²⟩/(D t) = 0.9996 / 0.9904 (statistical error 0.0045); γ kept to 10⁻¹² |
 | Matched witness in a pure ion channel, γ = 1000, t = 2000 | dε_n/dt = 1.0084 × D/√(2γ) |
 | Restart; 2 ranks vs serial | bit-identical; particles bit-identical (fields at round-off 4·10⁻¹⁶ as without scattering) |
+
+**Two-stage runs** (section 19, `boundary.in`, `bnd_check.py`; driver in 0…5, witness at ξ = 7,
+stage 2 from ξ = 5.01):
+
+| test | result |
+|---|---|
+| Rigid driver, same Δt, serial and 2 ranks per stage | fields of the stage-2 box identical to the single run (bit-identical) |
+| Rigid driver, stage 2 with Δt/4 (soft witness, γ = 30) | bit-identical to a single run with Δt/4 |
+| Evolving driver (γ = 300, ⟨γ⟩ 300 → 278, r_rms −17 %): stage 1 Δt = 10, stage 2 Δt = 2.5, vs a single run with Δt = 2.5 | witness ⟨γ⟩ to 2·10⁻⁵, r_rms 10⁻⁵, ε_n 6·10⁻⁷; a single run with Δt = 10 is off by 3 %, 17 %, 0.3 % |
 
 **GUI server** (section 17, `gui_check.py`, no browser): a run started through the API finishes and
 writes its `gui` frames every 2nd step with the requested fields, r ≤ 1 and every 2nd slice; the

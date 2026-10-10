@@ -55,6 +55,9 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     const Real xi_max = cfg.get_double("xi.max");
     box_.dxi = cfg.get_double("xi.step");
     box_.nxi = static_cast<int>(std::lround((xi_max - box_.xi_min) / box_.dxi)) + 1;
+    xi_head_ = box_.xi_min;
+    bwrite_path_ = cfg.get_string("boundary.write", "");
+    bread_path_ = cfg.get_string("boundary.read", "");
     dt_ = cfg.get_double("time.dt", 0.0);
     nsteps_ = cfg.get_int("time.steps", 0);
     t_ = cfg.get_double("time.start", 0.0);
@@ -226,6 +229,8 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     // ---- output groups (main output and diag.names), checkpoints, restart
     setup_output();
     if (restarted_) read_checkpoint(restart_path_);
+    if (!bwrite_path_.empty() && comm_.rank() == P - 1) open_boundary_write();
+    if (!bread_path_.empty()) open_boundary_read();   // every rank: xi_head_
     // ---- time step bookkeeping
     if (adaptive_ && restarted_) read_adapt_state(restart_path_);
     else {
@@ -298,7 +303,7 @@ double Simulation::choose_dt(int n, bool& last) {
             // the plasma of the whole box has the density at the box head, z = t - xi_min (see
             // step_fields); the maximum over the head positions of this step, [t_n, t_n + dt]:
             // first with dt = dt_{n-1}, then once more with the dt found
-            const double zh = t_ - box_.xi_min, cnst = 6.283185307179586 / nbeta_;
+            const double zh = t_ - xi_head_, cnst = 6.283185307179586 / nbeta_;
             auto dt_of = [&](double nm) { return nm > 0 ? cnst * std::sqrt(2 * gam / nm) : dt_max_; };
             double nmax = plasma_density_max(zh, zh + std::min(have_prev_ ? dt_prev_ : 0.0, dt_max_));
             dt = std::min(dt_max_, dt_of(nmax));
@@ -581,7 +586,7 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
     }
 
     // ---- fresh plasma at the front of the box, background (every rank: the background is the same)
-    const Real z_front = t_ - box_.xi_min;
+    const Real z_front = t_ - xi_head_;
     for (View1D v : {bg_rhot_.a0, bg_rhot_.ar, bg_rhot_.ai, bg_rho_.a0, bg_rho_.ar, bg_rho_.ai}) Kokkos::deep_copy(v, 0.0);
     unsigned long long sd = seed_;
     for (auto& s : species_) s->load(z_front, sd++);
@@ -605,7 +610,20 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             if (m1_) { solver_->filter(1, m.ar); solver_->filter(1, m.ai); }
         }
 
-    if (comm_.rank() == 0) {
+    if (comm_.rank() == 0 && !bread_path_.empty()) {
+        // stage 2: the plasma state leaving the stage-1 box, interpolated to this t; no beam upstream
+        boundary_state(t_);
+        size_t o = 0;
+        for (auto& sp : species_)
+            if (sp->mobile()) o += sp->unpack_state(bbuf_.data() + o);
+        for (View1D v : {fld_.bp.r0, fld_.bp.i0, fld_.bp.r1, fld_.bp.i1, fld_.bp.r2, fld_.bp.i2}) {
+            auto h = Kokkos::create_mirror_view(v);
+            for (int j = 0; j < M; ++j) h(j) = bbuf_[o + j];
+            Kokkos::deep_copy(v, h);
+            o += M;
+        }
+        Kokkos::deep_copy(bguard, 0.0);
+    } else if (comm_.rank() == 0) {
         // B+ initial guess for the Picard iteration: zero at the head; no beam upstream of the box
         for (View1D v : {fld_.bp.r0, fld_.bp.i0, fld_.bp.r1, fld_.bp.i1, fld_.bp.r2, fld_.bp.i2}) Kokkos::deep_copy(v, 0.0);
         Kokkos::deep_copy(bguard, 0.0);
@@ -646,7 +664,8 @@ void Simulation::step_fields(const std::vector<double>& msg, size_t& off) {
             ion_acc_[s][1] += r.born_wp2;
             ion.deposit_charge_state(diag, kl, diag_base_ + static_cast<int>(s));
         }
-        if (k < K - 1) {   // the last local push produces the state entering the next rank
+        if (k < K - 1 || !bwrite_path_.empty()) {   // the last local push produces the state entering the next rank
+            // (and, with boundary.write, the state leaving the box)
             // adaptive sub-slicing: if plasma particles would cross more than max_cells_ radial cells
             // in this step, it is split into nsub sub-slices, each with its own deposit and field
             // solve (beam rho - J_z extrapolated from this slice, laser <a^2> and ionization of this
@@ -1143,6 +1162,7 @@ void Simulation::run() {
         }
         step_ = n;
         step_fields(msg, off);
+        if (bwf_) write_boundary(n);
         const double tf = timer.seconds();
         if (rank < P - 1) comm_.isend(rank + 1, n % 30000, make_message(n));
 
@@ -1209,6 +1229,8 @@ void Simulation::run() {
             if (m >= start_step_ && thist_.count(m + 1)) g << m << " " << std::setprecision(12) << thist_.at(m + 1) << " " << v << "\n";
     }
     comm_.wait_send();
+    if (bwf_) { std::fclose(bwf_); bwf_ = nullptr; }
+    if (brf_) { std::fclose(brf_); brf_ = nullptr; }
     Kokkos::fence();
     for (auto& g : groups_)
         if (g.opmd) g.opmd->close();

@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17, Coulomb scattering -> 18). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17, Coulomb scattering -> 18, two-stage runs -> 19). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -207,6 +207,16 @@ Done and validated (README §7, `validation/reference_full.txt`):
   AWAKE-size run. Full suite 18/18 with the default on; CUDA compiles.
   Observation: scatter_channel.in (pure ion channel, no electrons) has MPI-vs-serial field diffs of
   3.6e-16 in bth even WITHOUT scattering (particles identical) - pre-existing, not investigated.
+- Two-stage runs (2026-10-10, Alexander: stiff driver with large dt, soft witness far behind):
+  boundary.write (stage 1: last rank also pushes through its last slice and appends per step the
+  downstream pipeline message minus beams/guard: mobile species pack_state + B+ 6M; header with grid,
+  dxi, xi_head, xi_next, species/ab_order; record t, step, len, max|rho_b| of the last slice; restart
+  truncates records >= start step) and boundary.read (stage 2, rank 0 unpacks the state interpolated
+  linearly in t, mask: x,y,px,py,dl,w + AB history + B+ interpolated, counts/flags/lev/xi bookkeeping
+  from the nearer record; Np mismatch -> nearer record). xi_head_ = stage-1 xi.min for z_front (and
+  adaptive dt density). Guard = 0 in stage 2. Section 19: same dt bit-identical (serial and 2+2 ranks),
+  dt/4 with rigid driver bit-identical, evolving driver: witness gamma 2e-5 vs fine single run while a
+  coarse single run is 3 % off.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis

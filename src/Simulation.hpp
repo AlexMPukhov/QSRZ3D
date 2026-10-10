@@ -31,6 +31,7 @@
 #include "RadialGrid.hpp"
 #include "SliceData.hpp"
 
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -190,6 +191,26 @@ private:
     double plasma_density_max(double z0, double z1) const;
     void write_adapt_state(const std::string& dir) const;
     void read_adapt_state(const std::string& dir);
+    // ---- two-stage runs through the rear boundary (SimulationIO.cpp)
+    // Stage 1 (boundary.write = file): the last rank pushes the plasma through its last slice as well
+    // and appends, every step, the plasma state leaving the box (the downstream pipeline message:
+    // particles with their Adams-Bashforth history, B+ warm start) to the file. Stage 2
+    // (boundary.read = file): a box starting at the next slice takes this state, interpolated linearly
+    // in t between the stored steps, instead of fresh plasma at its head; the plasma density profile
+    // still refers to the head of the stage-1 box (z = t - xi_head).
+    std::string bwrite_path_, bread_path_;
+    Real xi_head_ = 0;                  // xi of the plasma column's front (stage 2: stage-1 xi.min)
+    std::FILE* bwf_ = nullptr;
+    std::FILE* brf_ = nullptr;
+    struct BRec { double t; long step; long long off; long long len; double rhob; };
+    std::vector<BRec> bindex_;
+    std::vector<double> bbuf_;          // interpolated state for this step
+    bool bwarned_ = false;
+    void open_boundary_write();
+    void write_boundary(int n);
+    void open_boundary_read();
+    void boundary_state(double t);      // fills bbuf_
+    std::vector<char> boundary_mask(const std::vector<double>& d) const;
 };
 
 } // namespace quarz
