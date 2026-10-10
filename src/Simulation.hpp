@@ -133,6 +133,7 @@ private:
     std::string outdir_;
     unsigned long long seed_ = 1;
     std::ofstream beamlog_;
+    std::ofstream spinlog_;   // spin.txt: mean spin (polarization) of the beams with <beam>.spin
     long lost_total_ = 0;
     // ---- output groups (SimulationIO.cpp)
     std::vector<OutputGroup> groups_;        // [0] = main output (output.*), then diag.names

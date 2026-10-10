@@ -1,0 +1,47 @@
+# Spin precession (Thomas-BMT) in a pure ion channel (immobile ions, no plasma electrons, no scattering).
+# (gamma of the muons and antiprotons chosen so that they do not slip out of the box: dxi = t / (2 gamma^2))
+# Cold beams start on the axis direction (p_perp = 0) with the spin along z: every particle moves in
+# its own r-z plane and the spin turns with the momentum at the fixed rate
+#   d(spin angle)/d(momentum angle) = kappa = gamma beta^2 (a + 1/(gamma + 1)),
+# so s_r = sin(kappa theta), theta = atan(p_r / p_z). Three species: electrons (a = 1.16e-3),
+# negative muons (a = 1.17e-3, mass 206.77) and antiprotons (a = 1.79, kappa ~ 90).
+grid.type = regions
+grid.rmax = 3
+grid.regions = 0.3:0.003 3:0.03
+grid.max_ratio = 1.05
+xi.min = 0
+xi.max = 3.5
+xi.step = 0.02
+time.dt = 5
+time.steps = 200
+plasma.species = ions
+ions.charge = 1
+ions.mass = 1836
+ions.mobile = 0
+beams = electrons muons pbar
+electrons.n0 = 1e-7
+electrons.sigma_r = 0.1
+electrons.sigma_xi = 0.1
+electrons.xi0 = 1.0
+electrons.gamma = 200
+electrons.nparticles = 20000
+electrons.spin = 0 0 1
+muons.n0 = 1e-7
+muons.mass = 206.7682830
+muons.sigma_r = 0.1
+muons.sigma_xi = 0.1
+muons.xi0 = 1.5
+muons.gamma = 20
+muons.nparticles = 20000
+muons.spin = 0 0 1
+pbar.n0 = 1e-7
+pbar.mass = 1836.15267343
+pbar.sigma_r = 0.1
+pbar.sigma_xi = 0.1
+pbar.xi0 = 0.5
+pbar.gamma = 50
+pbar.nparticles = 20000
+pbar.spin = 0 0 1
+output.dir = out_spin
+output.every = 0
+output.beam_every = 200

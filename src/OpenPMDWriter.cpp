@@ -330,13 +330,14 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
 
     for (const Beam* bp : beams) {
         std::vector<double> p = bp->packed();
+        const size_t nc = static_cast<size_t>(bp->ncomp());
         if (pstride > 1) {
             std::vector<double> q;
-            for (size_t i = 0; i < p.size() / 7; i += static_cast<size_t>(pstride))
-                q.insert(q.end(), p.begin() + 7 * i, p.begin() + 7 * i + 7);
+            for (size_t i = 0; i < p.size() / nc; i += static_cast<size_t>(pstride))
+                q.insert(q.end(), p.begin() + nc * i, p.begin() + nc * i + nc);
             p.swap(q);
         }
-        const long long nloc = static_cast<long long>(p.size() / 7);
+        const long long nloc = static_cast<long long>(p.size() / nc);
         const long long ntot = allreduce_sum(nloc);
         if (ntot == 0) continue;   // same decision on every rank
         const long long poff = exscan_sum(nloc);
@@ -346,7 +347,7 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
         const Extent e{static_cast<uint64_t>(nloc)};
         auto column = [&](int c, double add, double sign) {
             std::shared_ptr<double> b(new double[std::max<long long>(nloc, 1)], std::default_delete<double[]>());
-            for (long long i = 0; i < nloc; ++i) b.get()[i] = add + sign * p[7 * static_cast<size_t>(i) + c];
+            for (long long i = 0; i < nloc; ++i) b.get()[i] = add + sign * p[nc * static_cast<size_t>(i) + c];
             return b;
         };
         auto put = [&](RecordComponent rc, std::shared_ptr<double> b, double unit) {
@@ -395,6 +396,16 @@ void OpenPMDWriter::write(int step, double t, const FieldTable* T, const std::ve
             w.setTimeOffset(0.0);
             weighted(w, 1, 1.0);
             put(w[RecordComponent::SCALAR], column(6, 0.0, 1.0), I.uW);
+        }
+        if (bp->spin()) {   // unit spin vector (T-BMT), not an openPMD base record
+            Record sr = sp["spin"];
+            sr.setUnitDimension(UD{});
+            sr.setTimeOffset(0.0);
+            weighted(sr, 0, 0.0);
+            sr.setAttribute("quarz_anomalous_moment", static_cast<double>(bp->anomalous()));
+            put(sr["x"], column(7, 0.0, 1.0), 1.0);
+            put(sr["y"], column(8, 0.0, 1.0), 1.0);
+            put(sr["z"], column(9, 0.0, 1.0), 1.0);
         }
         {
             Record q = sp["charge"];

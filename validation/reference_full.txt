@@ -174,3 +174,20 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2, 4], max rel diff 0.00e+00
   out_bnd_coarse t = 60: witness <gamma> 56.3183 (rel. diff 3.1e-02), r_rms 1.7e-01, eps_n 2.7e-03
  (a) with 2 ranks in each stage (expected: bit-identical to the single serial run):
   fields of the stage-2 box (xi >= 5.01) vs the single run, t = 60: max rel. difference 0.0e+00
+== 20. beam spin (Thomas-BMT) ==
+ (a) ion channel, analytic s_r = sin(kappa theta), kappa = gamma beta^2 (a + 1/(gamma+1)):
+ electrons kappa   1.2269  max|s_r| 4.756e-03  rel. error of s_r = sin(kappa theta) 1.02e-06  s_z 2.3e-11  max|s_theta| 5.0e-17  max||s|-1| 2.0e-15
+ muons     kappa   0.9733  max|s_r| 3.213e-03  rel. error of s_r = sin(kappa theta) 2.71e-07  s_z 2.8e-12  max|s_theta| 1.9e-15  max||s|-1| 2.0e-15
+ pbar      kappa  90.5865  max|s_r| 4.609e-02  rel. error of s_r = sin(kappa theta) 1.23e-07  s_z 2.6e-10  max|s_theta| 2.3e-16  max||s|-1| 1.8e-15
+ spin.txt: final polarization P = |<s>|: electrons 0.999998  muons 0.999999  pbar 0.999775
+ (b) wake, vs an RK4 integration of Lorentz + T-BMT in the stored fields (error ~ dt^2):
+ wake, a = 2, gamma 3.00 -> 6.15: rms spin turn 0.487 rad,  max |s - s_ref| 1.7e-02  (rms 1.3e-03),  max |u - u_ref|/gamma 1.6e-03
+ (c) scattering only (expected slopes 1 - O((kappa theta)^2)):
+ scattering, a = 0.00115965: kappa 2.1587  slope s_x/(kappa theta_x) 0.999999  s_y/(kappa theta_y) 0.999998  residual rms 1.8e-06  rms theta 5.8e-04  max||s|-1| 1.4e-15
+ (d) restart (expected: bit-identical):
+  12 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ 2 ranks vs serial (expected: particles and spins bit-identical; fields, beams.txt moments at round-off):
+  axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
+  beamlog  max rel diff 9.04e-10  (beams.txt col 11)
+  dumps    max rel diff 0.00e+00  (beam_electrons_000000.bin:x)
+  fields   max rel diff 5.30e-16  (fields_000010.bin:bz)

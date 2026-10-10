@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 19)}
+SECTIONS=${*:-$(seq 1 20)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -410,6 +410,37 @@ sec19() {
     fi
     unset OMP_NUM_THREADS
     rm -rf out_bnd_*
+}
+
+sec20() {
+    echo "== 20. beam spin (Thomas-BMT) =="
+    export OMP_NUM_THREADS=1
+    # (a) pure ion channel: s_r = sin(kappa theta), electrons, muons, antiprotons
+    $QS spin.in time.steps=$(q 200 100) output.beam_every=$(q 200 100) > /dev/null
+    echo " (a) ion channel, analytic s_r = sin(kappa theta), kappa = gamma beta^2 (a + 1/(gamma+1)):"
+    python3 spin_check.py channel out_spin $(q 200 100)
+    # (b) gamma 3 witness in a wake (E_r, E_z, B_theta), a = 2 to make the B term count; reference RK4
+    local NS=$(q 80 40) DT=$(q 0.5 1)
+    $QS spin_wake.in witness.anomalous_moment=2 time.dt=$DT time.steps=$NS output.every=$NS output.beam_every=$NS > /dev/null
+    echo " (b) wake, vs an RK4 integration of Lorentz + T-BMT in the stored fields (error ~ dt^2):"
+    python3 spin_check.py wake out_spin_wake 0 $NS $DT 2
+    # (c) multiple Coulomb scattering: s_perp = kappa theta_perp to first order
+    $QS scatter_free.in "witness.spin=0 0 1" witness.nparticles=$(q 40000 10000) output.dir=out_spin_sc > /dev/null
+    echo " (c) scattering only (expected slopes 1 - O((kappa theta)^2)):"
+    python3 spin_check.py free out_spin_sc 20 0.00115965218128
+    # (d) restart and 2 ranks bit-identical
+    local M="spin.in time.steps=10 output.beam_every=5 output.every=5 beams.xi_shape=ngp"
+    $QS $M checkpoint.every=4 checkpoint.keep=0 checkpoint.dir=out_spin_chk output.dir=out_spin_A > /dev/null
+    $QS $M restart.from=out_spin_chk/chk_000004 output.dir=out_spin_B > /dev/null
+    echo " (d) restart (expected: bit-identical):"
+    python3 restart_check.py out_spin_A out_spin_B 0 || true
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 2 $QS $M output.dir=out_spin_P > /dev/null
+        echo " 2 ranks vs serial (expected: particles and spins bit-identical; fields, beams.txt moments at round-off):"
+        python3 cmp_runs.py out_spin_A out_spin_P 1e-8 || true
+    fi
+    unset OMP_NUM_THREADS
+    rm -rf out_spin*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)

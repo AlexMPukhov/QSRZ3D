@@ -500,7 +500,7 @@ void Simulation::read_checkpoint(const std::string& dir) {
 
 void Simulation::truncate_logs(int step) {
     // keep comments and the lines of steps < step; column of the step: beams.txt 1, others 0
-    const std::pair<const char*, int> logs[] = {{"beams.txt", 1}, {"laser.txt", 0}, {"ionization.txt", 0}, {"timestep.txt", 0}};
+    const std::pair<const char*, int> logs[] = {{"beams.txt", 1}, {"laser.txt", 0}, {"ionization.txt", 0}, {"timestep.txt", 0}, {"spin.txt", 1}};
     for (const auto& l : logs) {
         const std::string fn = outdir_ + "/" + l.first;
         std::ifstream in(fn);

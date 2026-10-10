@@ -6,7 +6,7 @@ fields_NNNNNN.bin (version 2):
     mode 0 names: psi ez er eth br bth bz ne ni rhob
     mode 1 names: <name>_c, <name>_s with  f(r, theta) = f0 + f_c cos(theta) + f_s sin(theta)
 beam_<name>_NNNNNN.bin:
-    int32 n, then n records of 7 float64: x, y, p_x, p_y, p_z, xi, w
+    int32 n, then n records of 7 float64: x, y, p_x, p_y, p_z, xi, w (10 with spin: + s_x, s_y, s_z)
 """
 import numpy as np
 
@@ -40,10 +40,25 @@ def xz_plane(d, name):
 
 
 def read_beam(fn):
+    """beam_<name>_<step>.bin -> dict x y px py pz xi w (+ sx sy sz for a beam with spin)"""
+    import os
     with open(fn, "rb") as f:
-        n = np.fromfile(f, dtype=np.int32, count=1)[0]
-        a = np.fromfile(f, dtype=np.float64, count=7 * n).reshape(n, 7)
-    return dict(zip(["x", "y", "px", "py", "pz", "xi", "w"], a.T))
+        n = int(np.fromfile(f, dtype=np.int32, count=1)[0])
+        nc = 7 if n == 0 else (os.path.getsize(fn) - 4) // (8 * n)
+        a = np.fromfile(f, dtype=np.float64, count=nc * n).reshape(n, nc)
+    names = ["x", "y", "px", "py", "pz", "xi", "w"] + (["sx", "sy", "sz"] if nc == 10 else [])
+    return dict(zip(names, a.T))
+
+
+def read_spinlog(fn):
+    """spin.txt -> dict beam_name -> columns step t sx sy sz P"""
+    data = {}
+    for line in open(fn):
+        if line.startswith("#"):
+            continue
+        p = line.split()
+        data.setdefault(p[0], []).append([float(x) for x in p[1:]])
+    return {k: dict(zip(["step", "t", "sx", "sy", "sz", "P"], np.array(v).T)) for k, v in data.items()}
 
 
 def read_beamlog(fn):

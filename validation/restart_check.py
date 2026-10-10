@@ -37,8 +37,8 @@ for root, _, files in os.walk(B):
             d = max([rel(a[k], b[k]) for k in a if isinstance(a[k], np.ndarray)] + [rel(a["t"], b["t"])])
         elif f.startswith("beam_") and f.endswith(".bin"):
             a, b = read_beam(pa), read_beam(pb)
-            ka = np.array([a[k] for k in ("x", "y", "px", "py", "pz", "xi", "w")]).T
-            kb = np.array([b[k] for k in ("x", "y", "px", "py", "pz", "xi", "w")]).T
+            ka = np.array([a[k] for k in a]).T   # x y px py pz xi w (+ sx sy sz)
+            kb = np.array([b[k] for k in a]).T
             if len(ka) and len(ka) == len(kb):
                 ka, kb = ka[np.lexsort(ka.T[::-1])], kb[np.lexsort(kb.T[::-1])]
                 # sorting can pair different particles at round-off: compare column-wise sorted values
@@ -47,8 +47,8 @@ for root, _, files in os.walk(B):
             d = rel(ka, kb)
         elif f.startswith("axis_"):
             d = rel(np.loadtxt(pa, comments="#"), np.loadtxt(pb, comments="#"))
-        elif f in ("beams.txt", "laser.txt", "ionization.txt", "timestep.txt"):
-            c = 2 if f == "beams.txt" else 1
+        elif f in ("beams.txt", "laser.txt", "ionization.txt", "timestep.txt", "spin.txt"):
+            c = 2 if f in ("beams.txt", "spin.txt") else 1
             la = {tuple(l.split()[:c]): l.split()[c:] for l in open(pa) if l.strip() and l[0] != "#"}
             lb = [l.split() for l in open(pb) if l.strip() and l[0] != "#"]
             d = max([rel([float(x) for x in la[tuple(l[:c])]], [float(x) for x in l[c:]]) for l in lb] + [0.0])

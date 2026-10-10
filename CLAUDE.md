@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17, Coulomb scattering -> 18, two-stage runs -> 19). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17, Coulomb scattering -> 18, two-stage runs -> 19, spin -> 20). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -217,6 +217,16 @@ Done and validated (README §7, `validation/reference_full.txt`):
   adaptive dt density). Guard = 0 in stage 2. Section 19: same dt bit-identical (serial and 2+2 ranks),
   dt/4 with rigid driver bit-identical, evolving driver: witness gamma 2e-5 vs fine single run while a
   coarse single run is 3 % off.
+- Beam spin, Thomas-BMT (2026-10-10, Alexander): `<beam>.spin = sx sy sz`, `<beam>.anomalous_moment`
+  (defaults by mass: e+-, mu, p). Packed particle = 10 doubles with spin (Beam::ncomp(); pipeline
+  messages, checkpoints, dumps, merges, openPMD record `spin` all use it; readers infer 7/10 from
+  the size). Spin at half steps like p; W from fields of the step and mean of old/new u, Boris
+  rotation; startup rotates by -dt/2. Scattering kicks also turn s by kappa*theta about the kick
+  axis, kappa = g beta^2 (a + 1/(g+1)). spin.txt (<s>, P = |<s>|; MPI parts merged, restart-truncated).
+  Section 20: ion channel s_r = sin(kappa theta) 1e-6 (e, mu, pbar kappa 90), gamma-3 witness in a
+  wake with a = 2 vs Python RK4 second order (1.3e-3 -> 3.1e-4), scattering slope 0.999999, restart
+  and 2 ranks bit-identical. Cost: beam-only run 17 % longer. Not included: Stern-Gerlach force,
+  Sokolov-Ternov.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis

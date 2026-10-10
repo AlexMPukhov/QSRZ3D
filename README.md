@@ -250,6 +250,25 @@ hash of the particle's state at the start of the step, so they do not depend on 
 memory index or on MPI ranks; with several OpenMP threads the round-off of the atomic deposits
 changes the particle state and hence the random numbers (statistically equivalent runs).
 
+**Spin** (Thomas–BMT): `<beam>.spin = s_x s_y s_z` gives every particle of the beam a unit spin
+vector (the initial direction, normalised), which then follows
+
+  ds/dt = (q/m) s × W,  W = (a + 1/γ) B − a γ/(γ+1) (β·B) β − (a + 1/(γ+1)) β × E
+
+(units as for the momentum: m c, ω_p⁻¹, fields in m c ω_p/e; q/m in e/m_e). The anomalous moment
+a = (g − 2)/2 is taken from the mass for electrons/positrons (1.15965·10⁻³), muons (1.16592·10⁻³) and
+(anti)protons (1.79285), otherwise `<beam>.anomalous_moment` is required. Numerics: the spin lives
+at half steps like the momentum; W is evaluated with the fields of the step and the mean of the old
+and new momenta, and the rotation by Ω Δt is done Boris-style, so |s| = 1 to round-off and the
+scheme is second order. Coulomb scattering (above) deflects in the electric fields of charges at
+rest: each random kick also turns the spin about the same axis by κ θ, κ = γβ²(a + 1/(γ+1)) (the
+T-BMT rate ratio for B = 0, E ⊥ β). A spin–field coupling back on the orbit (Stern–Gerlach force)
+and radiative polarization (Sokolov–Ternov) are not included (both negligible for plasma
+accelerators). Output: `spin.txt` (weighted ⟨s⟩ and the polarization |⟨s⟩| of every beam with
+spin, at each step), s_x, s_y, s_z appended to the particle dumps and the openPMD record `spin`.
+Cost: a beam-only test (10⁶ particles, 1 thread, no plasma particles) runs 17 % longer with spin;
+in a run with plasma this is negligible.
+
 Leapfrog start-up uses a half kick. The quantity 1 − v_z is evaluated as
 (1+p⊥²)/(γ(γ+p_z)) to avoid cancellation.
 
@@ -652,6 +671,8 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `<beam>.scattering` | 1 if `units.n0_cm3` is given | multiple Coulomb scattering on the plasma ions and electrons (needs `units.n0_cm3`), see §1. The default Z = 1 is hydrogen: set `scattering.Z`, `ion_charge` for other gases |
 | `scattering.Z`, `scattering.ion_charge`, `scattering.A` | 1, Z, 1 (2Z for Z > 1) | nuclear charge, ion charge state, mass number of the background ions |
 | `scattering.coulomb_log_ions`, `scattering.coulomb_log_electrons` | computed | fixed Coulomb logarithms instead of the per-particle formulas |
+| `<beam>.spin` | — | three numbers: initial spin direction (normalised); switches on the Thomas–BMT spin precession, see §1 |
+| `<beam>.anomalous_moment` | by mass (e±, μ, p) | a = (g − 2)/2; required for other masses |
 | `scattering.factor`, `scattering.seed` | 1, 1 | multiplies the scattering rate (testing only); random seed |
 
 **Function parser (HiPACE++ style).** Profiles can be given as formulas.
@@ -903,7 +924,8 @@ frequent small dumps and rare full dumps can be combined (§6):
   the slice files and the particle dumps are first written per rank
   (`*.partN`) and merged into the usual files by rank 0 at the end of the run;
   if a run is killed, the `.partN` files hold the data.
-- **`beam_<name>_NNNNNN.bin`**: int32 n, then n × (x, y, p_x, p_y, p_z, ξ, w).
+- **`beam_<name>_NNNNNN.bin`**: int32 n, then n × (x, y, p_x, p_y, p_z, ξ, w), or n × (…, w, s_x, s_y, s_z)
+  for a beam with `<beam>.spin` (readers infer 7 or 10 doubles from the file size).
   Particles removed from the beam (w = 0) are not written.
 - **openPMD** (`output.format = openpmd` or `both`): one file per output step,
   `openpmd/data_NNNNNN.h5` (or `.bp`, `.json`), following the
@@ -1153,6 +1175,15 @@ measurable, fixed Coulomb logarithms):
 | Zero-emittance witness (n_b = 10⁻⁸) in a uniform plasma, t = 100, 10⁵ particles; Z = 1 and Z = 3, ζ = 1 | ⟨p_x²⟩/(D t) = 0.9972 / 0.9970, ⟨p_y²⟩/(D t) = 0.9996 / 0.9904 (statistical error 0.0045); γ kept to 10⁻¹² |
 | Matched witness in a pure ion channel, γ = 1000, t = 2000 | dε_n/dt = 1.0084 × D/√(2γ) |
 | Restart; 2 ranks vs serial | bit-identical; particles bit-identical (fields at round-off 4·10⁻¹⁶ as without scattering) |
+
+**Spin** (section 20, `spin.in`, `spin_wake.in`, `spin_check.py`; 1 thread):
+
+| test | result |
+|---|---|
+| Cold beams (spin along z, p_⊥ = 0) in a pure ion channel, t = 1000: electrons γ = 200, μ⁻ γ = 20, antiprotons γ = 50 (κ = 1.23, 0.97, 90.6) | s_r = sin(κ θ) with θ = atan(p_r/p_z) to 1.0·10⁻⁶, 2.7·10⁻⁷, 1.2·10⁻⁷ (relative to max s_r); s stays in the r–z plane (10⁻¹⁵); \|s\| − 1 ≤ 2·10⁻¹⁵ |
+| γ = 3 → 6 witness in a wake (E_r, E_z, B_θ), a = 2 (B term large), rms spin turn 0.49 rad, vs a Python RK4 of Lorentz + T-BMT in the stored fields | rms \|s − s_ref\| 1.3·10⁻³ at Δt = 0.5, 3.1·10⁻⁴ at Δt = 0.25 (second order, as the momenta: 1.6·10⁻³ → 4·10⁻⁴) |
+| Scattering only (section 18 deck, rate × 10⁶), spin along z | s_⊥ / (κ θ_⊥) = 0.999999 / 0.999998 (first-order small-angle result) |
+| Restart; 2 ranks vs serial | bit-identical; particles and spins bit-identical (fields 5·10⁻¹⁶, beam moments in `beams.txt` 10⁻⁹ at print precision) |
 
 **Two-stage runs** (section 19, `boundary.in`, `bnd_check.py`; driver in 0…5, witness at ξ = 7,
 stage 2 from ξ = 5.01):

@@ -40,6 +40,25 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
             throw std::runtime_error("radiation reaction (pusher.rr_n0_cm3) requires pusher.beam = imp_rr");
     }
     rr_ *= cfg.get_double("pusher.rr_scale", 1.0);
+    // ---- spin (Thomas-BMT), <beam>.spin = sx sy sz (initial direction)
+    {
+        const auto sv = cfg.get_list(name + ".spin");
+        if (!sv.empty()) {
+            if (sv.size() != 3) throw std::runtime_error(name + ".spin: give three numbers (initial spin direction)");
+            double n2 = 0;
+            for (int c = 0; c < 3; ++c) { s0_[c] = std::stod(sv[c]); n2 += s0_[c] * s0_[c]; }
+            if (!(n2 > 0)) throw std::runtime_error(name + ".spin: zero vector");
+            for (double& c : s0_) c /= std::sqrt(n2);
+            spin_ = true;
+            nc_ = 10;
+            double a = -1;
+            if (std::abs(m_ - 1.0) < 1e-6) a = 0.00115965218128;                  // electron, positron
+            else if (std::abs(m_ - 1836.15267343) < 1.0) a = 1.79284734463;       // proton
+            else if (std::abs(m_ - 206.7682830) < 0.1) a = 0.00116592061;         // muon
+            anom_ = cfg.get_double(name + ".anomalous_moment", a);
+            if (anom_ == -1) throw std::runtime_error(name + ".spin: give " + name + ".anomalous_moment (a = (g-2)/2) for this mass");
+        }
+    }
     // ---- multiple Coulomb scattering on the plasma (small-angle, Gaussian per step)
     // on by default when the physical density is known (cheap: a few % of a beam push, negligible
     // against the plasma sweep in realistic runs); <beam>.scattering = 0 switches it off
@@ -420,6 +439,15 @@ void Beam::accumulate(RefAcc& a, const double* p) const {
 
 void Beam::finish_init(std::vector<double>& local, const RefAcc& a) {
     np_global_ = a.n;
+    if (spin_) {   // generators give 7 doubles per particle; append the initial spin
+        const size_t n = local.size() / 7;
+        std::vector<double> e(10 * n);
+        for (size_t i = 0; i < n; ++i) {
+            std::copy(local.begin() + 7 * i, local.begin() + 7 * i + 7, e.begin() + 10 * i);
+            e[10 * i + 7] = s0_[0]; e[10 * i + 8] = s0_[1]; e[10 * i + 9] = s0_[2];
+        }
+        local.swap(e);
+    }
     set_particles(local);
     std::vector<double>().swap(local);
     gref_ = 0; xiref_ = 0;
@@ -651,6 +679,9 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
     const int mode = static_cast<int>(pusher_);
     const Real rr = rr_;
     const bool m1 = m1_;
+    const bool spin = spin_;
+    const Real an = anom_;
+    auto sx = sx_; auto sy = sy_; auto sz = sz_;
     Kokkos::parallel_for("beam.push", Range(0, Np_), KOKKOS_LAMBDA(int i) {
         if (w(i) == Real(0)) return;
         const Real X = x(i), Y = y(i);
@@ -705,12 +736,28 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
             const Real f = -Real(0.5) * qm * qm / gb;
             Fp = push::V3{f * dAr * c, f * dAr * sn, -f * dAxi};
         }
+        // Thomas-BMT precession, ds/dt = (q/m) s x W,
+        // W = (a + 1/g) B - a g/(g+1) (beta.B) beta - (a + 1/(g+1)) beta x E, at the mean momentum ub;
+        // Boris rotation (|s| exact to round-off). Spin lives at half steps like the momentum.
+        auto rotate_spin = [&](const push::V3& ub, Real tau) {
+            const Real gb = Kokkos::sqrt(Real(1) + push::dot(ub, ub));
+            const push::V3 be = (Real(1) / gb) * ub;
+            const push::V3 W = (an + Real(1) / gb) * B - (an * gb / (gb + Real(1)) * push::dot(be, B)) * be -
+                               (an + Real(1) / (gb + Real(1))) * push::cross(be, E);
+            const push::V3 tv = (Real(0.5) * qm * tau) * W;
+            const push::V3 s0{sx(i), sy(i), sz(i)};
+            const push::V3 s1 = s0 + push::cross(s0, tv);
+            const push::V3 s2 = s0 + (Real(2) / (Real(1) + push::dot(tv, tv))) * push::cross(s1, tv);
+            sx(i) = s2.x; sy(i) = s2.y; sz(i) = s2.z;
+        };
         if (!move) {
+            if (spin) rotate_spin(u, dt_kick);
             const Real g0 = Kokkos::sqrt(Real(1) + push::dot(u, u));
             u = u + (Real(2) * h) * (E + push::cross((Real(1) / g0) * u, B)) + dt_kick * Fp;
             px(i) = u.x; py(i) = u.y; pz(i) = u.z;
             return;
         }
+        const push::V3 uold = u;
         u = u + (Real(0.5) * dt_kick) * Fp;   // half kick (Strang splitting around the Lorentz push)
         switch (mode) {
             case 0: u = push::vay(u, E, B, h); break;
@@ -723,6 +770,7 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
             }
         }
         u = u + (Real(0.5) * dt_kick) * Fp;
+        if (spin) rotate_spin(Real(0.5) * (uold + u), dt_kick);
         if (scat) {
             // multiple Coulomb scattering, d<p_x^2>/dt = kappa [Z^2 n_i L_i + (n_e + (Z - zeta) n_i) L_e]
             // per transverse axis; elastic: |p| is kept. Random numbers from a hash of the particle's
@@ -747,11 +795,27 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
                 const Real u1 = Kokkos::fmax(ion_rand(skey, id, 0), Real(1e-300)), u2 = ion_rand(skey, id, 1);
                 const Real s = Kokkos::sqrt(D * Kokkos::fabs(dt_kick)) * Kokkos::sqrt(Real(-2) * Kokkos::log(u1));
                 const Real ph = Real(6.283185307179586) * u2;
+                const push::V3 ub = u;
                 u.x += s * Kokkos::cos(ph);
                 u.y += s * Kokkos::sin(ph);
                 const Real pt2 = u.x * u.x + u.y * u.y;
                 const Real pz2 = pp * pp - pt2;
                 if (pz2 > Real(0)) u.z = (u.z >= Real(0) ? Real(1) : Real(-1)) * Kokkos::sqrt(pz2);
+                if (spin) {
+                    // the deflection is electric (fields of charges at rest): the spin turns about the same
+                    // axis by kappa theta, kappa = g beta^2 (a + 1/(g+1)) (T-BMT with B = 0, E perp beta)
+                    const push::V3 ax = push::cross(ub, u);
+                    const Real sa = Kokkos::sqrt(push::dot(ax, ax));
+                    if (sa > Real(0)) {
+                        const Real gg = Kokkos::sqrt(Real(1) + pp * pp);
+                        const Real ang = pp * pp / gg * (an + Real(1) / (gg + Real(1))) * Kokkos::atan2(sa, push::dot(ub, u));
+                        const push::V3 n = (Real(1) / sa) * ax;
+                        const push::V3 s0{sx(i), sy(i), sz(i)};
+                        const Real ca = Kokkos::cos(ang), si = Kokkos::sin(ang);
+                        const push::V3 s1 = ca * s0 + si * push::cross(n, s0) + ((Real(1) - ca) * push::dot(n, s0)) * n;
+                        sx(i) = s1.x; sy(i) = s1.y; sz(i) = s1.z;
+                    }
+                }
             }
         }
         const Real p2 = u.x * u.x + u.y * u.y;
@@ -870,21 +934,53 @@ std::vector<double> Beam::packed(const Kokkos::View<int*, HostSpace>* sel) const
     auto hpz = Kokkos::create_mirror_view_and_copy(HostSpace(), pz_);
     auto hxi = Kokkos::create_mirror_view_and_copy(HostSpace(), xi_);
     auto hw = Kokkos::create_mirror_view_and_copy(HostSpace(), w_);
+    Kokkos::View<double*, HostSpace> hs[3];
+    if (spin_) { hs[0] = Kokkos::create_mirror_view_and_copy(HostSpace(), sx_);
+                 hs[1] = Kokkos::create_mirror_view_and_copy(HostSpace(), sy_);
+                 hs[2] = Kokkos::create_mirror_view_and_copy(HostSpace(), sz_); }
     std::vector<double> out;
     for (int i = 0; i < Np_; ++i) {
         if (hw(i) == 0) continue;
         if (sel && !(*sel)(i)) continue;
         out.insert(out.end(), {hx(i), hy(i), hpx(i), hpy(i), hpz(i), hxi(i), hw(i)});
+        if (spin_) out.insert(out.end(), {hs[0](i), hs[1](i), hs[2](i)});
     }
     return out;
 }
 
+std::vector<View1D*> Beam::comps() {
+    std::vector<View1D*> v = {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_};
+    if (spin_) { v.push_back(&sx_); v.push_back(&sy_); v.push_back(&sz_); }
+    return v;
+}
+std::vector<const View1D*> Beam::comps() const {
+    std::vector<const View1D*> v = {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_};
+    if (spin_) { v.push_back(&sx_); v.push_back(&sy_); v.push_back(&sz_); }
+    return v;
+}
+
+std::array<double, 4> Beam::spin_sums() const {
+    std::array<double, 4> S{0, 0, 0, 0};
+    if (!spin_ || Np_ == 0) return S;
+    auto hw = Kokkos::create_mirror_view_and_copy(HostSpace(), w_);
+    auto a = Kokkos::create_mirror_view_and_copy(HostSpace(), sx_);
+    auto b = Kokkos::create_mirror_view_and_copy(HostSpace(), sy_);
+    auto c = Kokkos::create_mirror_view_and_copy(HostSpace(), sz_);
+    for (int i = 0; i < Np_; ++i) {
+        const double w = hw(i);
+        if (w == 0) continue;
+        S[0] += w; S[1] += w * a(i); S[2] += w * b(i); S[3] += w * c(i);
+    }
+    return S;
+}
+
 std::vector<double> Beam::packed_all() const {
-    View1D v[7] = {x_, y_, px_, py_, pz_, xi_, w_};
-    std::vector<double> out(7 * static_cast<size_t>(Np_));
-    for (int c = 0; c < 7; ++c) {
-        auto h = Kokkos::create_mirror_view_and_copy(HostSpace(), v[c]);
-        for (int i = 0; i < Np_; ++i) out[7 * static_cast<size_t>(i) + c] = h(i);
+    const auto v = comps();
+    const size_t nc = static_cast<size_t>(nc_);
+    std::vector<double> out(nc * static_cast<size_t>(Np_));
+    for (size_t c = 0; c < nc; ++c) {
+        auto h = Kokkos::create_mirror_view_and_copy(HostSpace(), *v[c]);
+        for (int i = 0; i < Np_; ++i) out[nc * static_cast<size_t>(i) + c] = h(i);
     }
     return out;
 }
@@ -893,25 +989,29 @@ void Beam::dump(const std::string& filename, int stride) const {
     std::vector<double> p = packed();
     if (stride > 1) {
         std::vector<double> q;
-        for (size_t i = 0; i < p.size() / 7; i += static_cast<size_t>(stride))
-            q.insert(q.end(), p.begin() + 7 * i, p.begin() + 7 * i + 7);
+        const size_t nc = static_cast<size_t>(nc_);
+        for (size_t i = 0; i < p.size() / nc; i += static_cast<size_t>(stride))
+            q.insert(q.end(), p.begin() + nc * i, p.begin() + nc * i + nc);
         p.swap(q);
     }
+    // int32 n, then n records of 7 doubles (10 with spin: + s_x s_y s_z; readers infer it from the size)
     std::ofstream out(filename, std::ios::binary);
-    const int32_t n = static_cast<int32_t>(p.size() / 7);
+    const int32_t n = static_cast<int32_t>(p.size() / static_cast<size_t>(nc_));
     out.write(reinterpret_cast<const char*>(&n), sizeof(n));
     out.write(reinterpret_cast<const char*>(p.data()), sizeof(double) * p.size());
 }
 
 // replace the particle arrays by the packed list (host -> device)
 void Beam::set_particles(const std::vector<double>& p) {
-    Np_ = static_cast<int>(p.size() / 7);
-    View1D* views[7] = {&x_, &y_, &px_, &py_, &pz_, &xi_, &w_};
-    const char* nm[7] = {".x", ".y", ".px", ".py", ".pz", ".xi", ".w"};
-    for (int c = 0; c < 7; ++c) {
+    const size_t nc = static_cast<size_t>(nc_);
+    if (p.size() % nc != 0) throw std::runtime_error(name_ + ": particle data with a wrong number of components (spin?)");
+    Np_ = static_cast<int>(p.size() / nc);
+    const auto views = comps();
+    const char* nm[10] = {".x", ".y", ".px", ".py", ".pz", ".xi", ".w", ".sx", ".sy", ".sz"};
+    for (size_t c = 0; c < nc; ++c) {
         *views[c] = View1D(name_ + nm[c], Np_);
         auto h = Kokkos::create_mirror_view(*views[c]);
-        for (int i = 0; i < Np_; ++i) h(i) = p[7 * static_cast<size_t>(i) + c];
+        for (int i = 0; i < Np_; ++i) h(i) = p[nc * static_cast<size_t>(i) + c];
         Kokkos::deep_copy(*views[c], h);
     }
 }
@@ -928,9 +1028,10 @@ void Beam::restrict_to_local() {
     // particles outside the box stay with the first / last rank (as in a serial run)
     const int lo = bg_.k0 == 0 ? std::numeric_limits<int>::min() : bg_.k0;
     const int hi = bg_.k0 + bg_.nloc == bg_.nxi ? std::numeric_limits<int>::max() : bg_.k0 + bg_.nloc;
-    for (size_t i = 0; i < all.size(); i += 7) {
+    const size_t nc = static_cast<size_t>(nc_);
+    for (size_t i = 0; i < all.size(); i += nc) {
         const int k = slice_of(all[i + 5]);
-        if (k >= lo && k < hi) keep.insert(keep.end(), all.begin() + i, all.begin() + i + 7);
+        if (k >= lo && k < hi) keep.insert(keep.end(), all.begin() + i, all.begin() + i + nc);
     }
     set_particles(keep);
 }
@@ -950,9 +1051,10 @@ std::vector<double> Beam::extract_outgoing() {
     if (nout == 0 && ndead < Np_ / 4 + 1) return {};     // nothing to send; compact only occasionally
     const std::vector<double> all = packed();
     std::vector<double> keep, out;
-    for (size_t i = 0; i < all.size(); i += 7) {
+    const size_t nc = static_cast<size_t>(nc_);
+    for (size_t i = 0; i < all.size(); i += nc) {
         auto& dst = (slice_of(all[i + 5]) >= kend) ? out : keep;
-        dst.insert(dst.end(), all.begin() + i, all.begin() + i + 7);
+        dst.insert(dst.end(), all.begin() + i, all.begin() + i + nc);
     }
     set_particles(keep);
     return out;
@@ -961,7 +1063,7 @@ std::vector<double> Beam::extract_outgoing() {
 void Beam::append(const double* p, size_t n) {
     if (n == 0) return;
     std::vector<double> all = packed();
-    all.insert(all.end(), p, p + 7 * n);
+    all.insert(all.end(), p, p + static_cast<size_t>(nc_) * n);
     set_particles(all);
 }
 

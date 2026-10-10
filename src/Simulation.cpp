@@ -202,6 +202,14 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
     if (P == 1 && fresh_beams)
         beamlog_ << "# beam step t alive npart charge gamma_mean gamma_rms xi_mean xi_rms r_rms emit_nx"
                     " x_mean y_mean emit_ny sigma_x sigma_y\n";
+    bool any_spin = false;
+    for (const auto& b : beams_) any_spin = any_spin || b->spin();
+    if (any_spin) {
+        const bool fresh_spin = fresh("spin.txt");
+        if (P == 1) spinlog_.open(outdir_ + "/spin.txt", std::ios::out | log_mode);
+        else spinlog_.open(outdir_ + "/spin.part" + std::to_string(r));
+        if (P == 1 && fresh_spin) spinlog_ << "# beam step t <s_x> <s_y> <s_z> P = |<s>| (weighted means over live particles)\n";
+    }
 
     // ---- laser envelope
     if (cfg.has("laser.a0")) {
@@ -753,7 +761,7 @@ std::vector<double> Simulation::make_message(int n) {
     m.push_back(cur_dt_);
     m.push_back(cur_last_ ? 1.0 : 0.0);
     for (size_t b = 0; b < beams_.size(); ++b) {
-        m.push_back(static_cast<double>(outbox_[b].size() / 7));
+        m.push_back(static_cast<double>(outbox_[b].size() / beams_[b]->ncomp()));
         m.insert(m.end(), outbox_[b].begin(), outbox_[b].end());
         outbox_[b].clear();
     }
@@ -941,6 +949,19 @@ void Simulation::write_beam_output(int n) {
             for (double x : S) beamlog_ << " " << x;
             beamlog_ << "\n";
         }
+        if (b->spin()) {
+            const auto P4 = b->spin_sums();
+            if (!par) {
+                const double w = P4[0] > 0 ? P4[0] : 1;
+                const double mx = P4[1] / w, my = P4[2] / w, mz = P4[3] / w;
+                spinlog_ << b->name() << " " << n << " " << std::setprecision(10) << t_ << " " << std::setprecision(15)
+                         << mx << " " << my << " " << mz << " " << std::sqrt(mx * mx + my * my + mz * mz) << "\n";
+            } else {
+                spinlog_ << b->name() << " " << n << " " << std::setprecision(17) << t_;
+                for (double x : P4) spinlog_ << " " << x;
+                spinlog_ << "\n";
+            }
+        }
         if (slice_bins_ > 0 && out_every_ > 0 && n % out_every_ == 0) {
             const auto ss = b->slice_sums(slice_lo_, slice_hi_, slice_bins_);
             const std::string fn = outdir_ + "/slices_" + b->name() + "_" + step + ".txt";
@@ -953,6 +974,7 @@ void Simulation::write_beam_output(int n) {
         }
     }
     beamlog_.flush();
+    if (spinlog_.is_open()) spinlog_.flush();
 }
 
 // combine the per-rank partial outputs of a parallel run (rank 0, after the run)
@@ -1058,6 +1080,39 @@ void Simulation::merge_partial_outputs() {
               << d.emit_ny << " " << d.sigma_x << " " << d.sigma_y << "\n";
         }
     }
+    // spin.txt: sum the partial spin sums
+    if (fs::exists(outdir_ + "/spin.part0")) {
+        std::map<std::pair<std::string, int>, std::pair<double, std::array<double, 4>>> acc;
+        for (int r = 0; r < P; ++r) {
+            std::ifstream in(outdir_ + "/spin.part" + std::to_string(r));
+            std::string name;
+            int n;
+            double t;
+            while (in >> name >> n >> t) {
+                std::array<double, 4> S;
+                for (auto& x : S) in >> x;
+                auto key = std::make_pair(name, n);
+                auto it = acc.find(key);
+                if (it == acc.end()) acc[key] = {t, S};
+                else for (int c = 0; c < 4; ++c) it->second.second[c] += S[c];
+            }
+            fs::remove(outdir_ + "/spin.part" + std::to_string(r));
+        }
+        std::vector<std::pair<std::string, int>> order;
+        for (const auto& e : acc) order.push_back(e.first);
+        std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) {
+            return a.second != b.second ? a.second < b.second : a.first < b.first; });
+        const bool hdr = !restarted_ || !fs::exists(outdir_ + "/spin.txt");
+        std::ofstream o(outdir_ + "/spin.txt", restarted_ ? std::ios::app : std::ios::trunc);
+        if (hdr) o << "# beam step t <s_x> <s_y> <s_z> P = |<s>| (weighted means over live particles)\n";
+        for (const auto& key : order) {
+            const auto& e = acc[key];
+            const double w = e.second[0] > 0 ? e.second[0] : 1;
+            const double mx = e.second[1] / w, my = e.second[2] / w, mz = e.second[3] / w;
+            o << key.first << " " << key.second << " " << std::setprecision(10) << e.first << " " << std::setprecision(15)
+              << mx << " " << my << " " << mz << " " << std::sqrt(mx * mx + my * my + mz * mz) << "\n";
+        }
+    }
     // slices and particle dumps (main output directory and the diagnostic groups)
     std::vector<std::string> dirs;
     for (const auto& g : groups_)
@@ -1089,18 +1144,22 @@ void Simulation::merge_partial_outputs() {
             for (const auto& b : beams_) if (b->name() == bname) q = b->charge();
             Beam::write_slices_file(base, t, q, slice_lo_, slice_hi_, slice_bins_, sum);
         } else if (leaf.rfind("beam_", 0) == 0) {
+            std::string bname = leaf.substr(5);
+            bname = bname.substr(0, bname.rfind('_'));
+            size_t nc = 7;
+            for (const auto& b : beams_) if (b->name() == bname) nc = static_cast<size_t>(b->ncomp());
             std::vector<double> all;
             for (int r = 0; r < P; ++r) {
                 std::ifstream in(base + ".part" + std::to_string(r), std::ios::binary);
                 int32_t n = 0;
                 in.read(reinterpret_cast<char*>(&n), 4);
-                std::vector<double> v(7 * static_cast<size_t>(n));
+                std::vector<double> v(nc * static_cast<size_t>(n));
                 in.read(reinterpret_cast<char*>(v.data()), static_cast<std::streamsize>(8 * v.size()));
                 all.insert(all.end(), v.begin(), v.end());
                 fs::remove(base + ".part" + std::to_string(r));
             }
             std::ofstream o(base, std::ios::binary);
-            const int32_t n = static_cast<int32_t>(all.size() / 7);
+            const int32_t n = static_cast<int32_t>(all.size() / nc);
             o.write(reinterpret_cast<const char*>(&n), 4);
             o.write(reinterpret_cast<const char*>(all.data()), static_cast<std::streamsize>(8 * all.size()));
         }
@@ -1157,7 +1216,7 @@ void Simulation::run() {
                 const size_t np = static_cast<size_t>(msg[off]);
                 ++off;
                 b->append(msg.data() + off, np);
-                off += 7 * np;
+                off += static_cast<size_t>(b->ncomp()) * np;
             }
         }
         step_ = n;
@@ -1235,6 +1294,7 @@ void Simulation::run() {
     for (auto& g : groups_)
         if (g.opmd) g.opmd->close();
     beamlog_.close();
+    if (spinlog_.is_open()) spinlog_.close();
     laserlog_.close();
     ionlog_.close();
     const double tmax = comm_.allreduce_max(total.seconds());

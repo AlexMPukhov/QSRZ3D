@@ -98,6 +98,10 @@ public:
     bool rigid() const { return rigid_; }
     bool analytic() const { return analytic_; }
     int  num_particles() const { return Np_; }
+    int  ncomp() const { return nc_; }              // packed doubles per particle (7, 10 with spin)
+    bool spin() const { return spin_; }
+    Real anomalous() const { return anom_; }
+    std::array<double, 4> spin_sums() const;        // sum w, sum w s_x, s_y, s_z (live particles)
     long num_global() const { return np_global_; }   // particles of the whole beam at the start
 
 private:
@@ -141,6 +145,13 @@ private:
     Real rr_ = 0;   // (2/3) r_e k_p q^2/m, 0 = no radiation reaction
     int Np_ = 0;
     View1D x_, y_, px_, py_, pz_, xi_, w_;
+    View1D sx_, sy_, sz_;           // spin (unit vector), with <beam>.spin
+    bool spin_ = false;
+    Real anom_ = 0;                 // anomalous magnetic moment a = (g - 2)/2
+    double s0_[3] = {0, 0, 1};      // initial spin direction
+    int nc_ = 7;                    // doubles per packed particle: 7, or 10 with spin
+    std::vector<View1D*> comps();
+    std::vector<const View1D*> comps() const;
 };
 
 } // namespace quarz
