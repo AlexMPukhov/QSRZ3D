@@ -1,4 +1,6 @@
 #include "Beam.hpp"
+#include <functional>
+#include "Ionization.hpp"
 #include "Config.hpp"
 #include "Pushers.hpp"
 #include "SliceData.hpp"
@@ -38,6 +40,30 @@ Beam::Beam(const Config& cfg, const std::string& name, const RadialGrid& grid, c
             throw std::runtime_error("radiation reaction (pusher.rr_n0_cm3) requires pusher.beam = imp_rr");
     }
     rr_ *= cfg.get_double("pusher.rr_scale", 1.0);
+    // ---- multiple Coulomb scattering on the plasma (small-angle, Gaussian per step)
+    sc_.on = cfg.get_bool(name + ".scattering", false);
+    if (sc_.on) {
+        const double n0 = cfg.get_double("units.n0_cm3", cfg.get_double("pusher.rr_n0_cm3", 0.0));
+        if (!(n0 > 0)) throw std::runtime_error(name + ".scattering needs the plasma density units.n0_cm3");
+        const double re = 2.8179403262e-13;                                // cm
+        const double kp = 5.64146e4 * std::sqrt(n0) / 2.99792458e10;     // 1/cm
+        const double qm = q_ / m_;
+        sc_.kappa = kp * re * qm * qm * cfg.get_double("scattering.factor", 1.0);
+        sc_.Z = cfg.get_double("scattering.Z", 1.0);
+        sc_.zeta = cfg.get_double("scattering.ion_charge", sc_.Z);
+        const double A = cfg.get_double("scattering.A", sc_.Z <= 1 ? 1.0 : 2.0 * sc_.Z);
+        if (sc_.Z < 1 || sc_.zeta < 0 || sc_.zeta > sc_.Z) throw std::runtime_error("scattering: need Z >= 1 and 0 <= ion_charge <= Z");
+        const double a0 = 5.29177210903e-9;                                 // Bohr radius, cm
+        sc_.a0 = a0 * kp;
+        sc_.bmax_i = (sc_.zeta >= sc_.Z) ? 1.0 : std::min(1.0, 0.885 * a0 * std::pow(sc_.Z, -1.0 / 3.0) * kp);
+        sc_.RN = 1.2e-13 * std::cbrt(A) * kp;                             // nuclear radius
+        sc_.lamC = 3.8615926796e-11 * kp / m_;                            // hbar / (m c), m in m_e
+        sc_.Li = cfg.get_double("scattering.coulomb_log_ions", -1.0);
+        sc_.Le = cfg.get_double("scattering.coulomb_log_electrons", -1.0);
+        sc_.seed = static_cast<uint64_t>(cfg.get_int("scattering.seed", 1)) * 0x9e3779b97f4a7c15ULL ^
+                   std::hash<std::string>{}(name);
+        if (rigid_) throw std::runtime_error(name + ".scattering: not for rigid beams");
+    }
     const std::string prof = cfg.get_string(name + ".profile", "gaussian");
     analytic_ = cfg.get_bool(name + ".analytic", false);
     if (prof == "parsed") {
@@ -566,11 +592,21 @@ void Beam::deposit_impact(const View3D& imp) const {
     });
 }
 
-void Beam::push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond) {
+void Beam::push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond, const View3D& diag, int step) {
     if (rigid_) return;
     // leapfrog start-up: momenta are given at t, the scheme needs them at t - dt_kick/2
     if (!started_) { advance(fld, -0.5 * dt_kick, -0.5 * dt_kick, false, pond); started_ = true; }
-    advance(fld, dt_kick, dt_drift, true, pond);
+    advance(fld, dt_kick, dt_drift, true, pond, diag, step);
+}
+
+std::string Beam::scattering_description() const {
+    if (!sc_.on) return "";
+    std::ostringstream o;
+    o << "Coulomb scattering on the plasma: Z = " << sc_.Z << ", ion charge " << sc_.zeta << ", k_p r_e (q/m)^2 = "
+      << sc_.kappa << "; Coulomb logarithms "
+      << (sc_.Li > 0 ? std::to_string(sc_.Li) : std::string("auto: ln(b_max / max(lambda_C/gamma, R_N))")) << " (ions), "
+      << (sc_.Le > 0 ? std::to_string(sc_.Le) : std::string("auto: ln(b_max / (lambda_C sqrt(2/gamma)))")) << " (electrons)";
+    return o.str();
 }
 
 double Beam::min_gamma_eff(double gthr) const {
@@ -588,7 +624,10 @@ double Beam::min_gamma_eff(double gthr) const {
     return static_cast<double>(g) * m_ / std::abs(q_);
 }
 
-void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const View3D& pond) {
+void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const View3D& pond, const View3D& diag, int step) {
+    const bool scat = sc_.on && move && diag.extent(0) > 0;
+    const Scatter sc = sc_;
+    const uint64_t skey = ion_mix(sc_.seed ^ ion_mix(static_cast<uint64_t>(step) + 0x51ed27ULL));
     const bool laser = pond.extent(0) > 0;
     const GridD g = grid_.d;
     auto x = x_; auto y = y_; auto px = px_; auto py = py_; auto pz = pz_; auto xi = xi_; auto w = w_;
@@ -673,6 +712,36 @@ void Beam::advance(const View3D& fld, Real dt_kick, Real dt, bool move, const Vi
             }
         }
         u = u + (Real(0.5) * dt_kick) * Fp;
+        if (scat) {
+            // multiple Coulomb scattering, d<p_x^2>/dt = kappa [Z^2 n_i L_i + (n_e + (Z - zeta) n_i) L_e]
+            // per transverse axis; elastic: |p| is kept. Random numbers from a hash of the particle's
+            // state at the start of the step (independent of its memory index and rank).
+            auto bild = [&](int comp) {
+                return (Real(1) - tk) * ((Real(1) - t) * diag(k, j, comp) + t * diag(k, j + 1, comp)) +
+                       tk * ((Real(1) - t) * diag(k1, j, comp) + t * diag(k1, j + 1, comp));
+            };
+            const Real ne = Kokkos::fmax(bild(1), Real(0)), ni = Kokkos::fmax(bild(2), Real(0));   // D_NE0, D_NI0
+            const Real pp = Kokkos::sqrt(push::dot(u, u));
+            const Real g = Kokkos::sqrt(Real(1) + pp * pp);
+            const Real Li = sc.Li > 0 ? sc.Li : Kokkos::log(sc.bmax_i / Kokkos::fmax(sc.lamC / g, sc.RN));
+            const Real bmin_e = sc.lamC * Kokkos::sqrt(Real(2) / g);
+            const Real Le = sc.Le > 0 ? sc.Le : Kokkos::log(Real(1) / bmin_e);
+            const Real Lb = sc.Le > 0 ? sc.Le : Kokkos::log(Kokkos::fmax(sc.a0, bmin_e) / bmin_e);
+            const Real D = sc.kappa * (sc.Z * sc.Z * ni * Kokkos::fmax(Li, Real(0)) + ne * Kokkos::fmax(Le, Real(0)) +
+                                       (sc.Z - sc.zeta) * ni * Kokkos::fmax(Lb, Real(0)));
+            if (D > Real(0)) {
+                union { double d; uint64_t u; } bx{X}, by{Y}, bz{xi(i)}, bp{pz(i)};
+                const uint64_t id = ion_mix(bx.u ^ ion_mix(by.u ^ ion_mix(bz.u ^ ion_mix(bp.u))));
+                const Real u1 = Kokkos::fmax(ion_rand(skey, id, 0), Real(1e-300)), u2 = ion_rand(skey, id, 1);
+                const Real s = Kokkos::sqrt(D * Kokkos::fabs(dt_kick)) * Kokkos::sqrt(Real(-2) * Kokkos::log(u1));
+                const Real ph = Real(6.283185307179586) * u2;
+                u.x += s * Kokkos::cos(ph);
+                u.y += s * Kokkos::sin(ph);
+                const Real pt2 = u.x * u.x + u.y * u.y;
+                const Real pz2 = pp * pp - pt2;
+                if (pz2 > Real(0)) u.z = (u.z >= Real(0) ? Real(1) : Real(-1)) * Kokkos::sqrt(pz2);
+            }
+        }
         const Real p2 = u.x * u.x + u.y * u.y;
         const Real gam = Kokkos::sqrt(Real(1) + p2 + u.z * u.z);
         const Real omvz = (Real(1) + p2) / (gam * (gam + u.z));

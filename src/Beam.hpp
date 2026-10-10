@@ -44,10 +44,26 @@ public:
     // pond: laser ponderomotive arrays (local slice, node, {<a^2>, d/dr, d/dxi}); empty = no laser
     // Leapfrog with a variable step: the momenta live at t_{n-1/2}; the kick spans
     // dt_kick = (dt_{n-1} + dt_n)/2 and the drift dt_drift = dt_n (equal for a constant dt).
-    void push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond = View3D());
+    // diag (local slice, node, D_*): plasma densities for Coulomb scattering; step: random key
+    void push(const View3D& fld, Real dt_kick, Real dt_drift, const View3D& pond = View3D(),
+              const View3D& diag = View3D(), int step = 0);
     // one pusher step (move=false: explicit kick only, for the leapfrog start). Public because
     // CUDA extended lambdas may not live in private member functions.
-    void advance(const View3D& fld, Real dt_kick, Real dt_drift, bool move, const View3D& pond);
+    void advance(const View3D& fld, Real dt_kick, Real dt_drift, bool move, const View3D& pond,
+                 const View3D& diag = View3D(), int step = 0);
+    // multiple Coulomb scattering on the plasma ions and electrons (<beam>.scattering)
+    struct Scatter {
+        bool on = false;
+        Real kappa = 0;          // k_p r_e (q/m)^2 * scattering.factor: d<p_x^2>/dt = kappa n Z^2 L per target
+        Real Z = 1, zeta = 1;    // nuclear charge, ion charge state (bound electrons Z - zeta)
+        Real Li = -1, Le = -1;   // fixed Coulomb logarithms (< 0: computed per particle)
+        Real bmax_i = 1;         // ion screening length (k_p^-1 if fully ionized, else Thomas-Fermi), c/omega_p
+        Real a0 = 0;             // Bohr radius (bound electrons), c/omega_p
+        Real RN = 0, lamC = 0;   // nuclear radius, reduced Compton wavelength / (m/m_e), c/omega_p
+        uint64_t seed = 1;
+    };
+    bool scattering() const { return sc_.on; }
+    std::string scattering_description() const;
     // adaptive time step: min over live particles of max(gamma, gthr) * m / |q|
     // (omega_beta^2 = (|q|/m) n / (2 gamma)); +inf for rigid beams or with <beam>.adaptive_dt = 0
     double min_gamma_eff(double gthr) const;
@@ -120,6 +136,7 @@ private:
     bool parsed_ = false;
     Parser dens_;
     BeamPusher pusher_ = BeamPusher::Vay;
+    Scatter sc_;   // <beam>.scattering
     Real rr_ = 0;   // (2/3) r_e k_p q^2/m, 0 = no radiation reaction
     int Np_ = 0;
     View1D x_, y_, px_, py_, pz_, xi_, w_;

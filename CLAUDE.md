@@ -70,7 +70,7 @@ Package for delivery (includes .git, so the history survives the container):
 ## Validation policy (keep it fast)
 - After a code change: quick suite with `-c` (2 min). Only the sections the change can affect
   if it is clearly local (laser -> 11, ionization -> 12, MPI/output -> 9 10, m = 1 -> 6 7,
-  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17). Full suite with `-c` at milestones and before delivering physics results.
+  grid/solver -> 1 2 5, plasma push / sub-slicing -> 13, smoothing -> 14, checkpoints / output groups -> 15, time step -> 16, GUI -> 17, Coulomb scattering -> 18). Full suite with `-c` at milestones and before delivering physics results.
 - Run long suites in the background (`nohup ... &`) and poll the process, not `pgrep -f`
   with a pattern that matches the polling shell itself.
 - CUDA compile check (~10 min) only when device code changed (kernels, Types.hpp, views).
@@ -192,6 +192,18 @@ Done and validated (README §7, `validation/reference_full.txt`):
   127.0.0.1 only + token. MPI frames shown when rank-0 step >= frame + P. Checked with Playwright
   screenshots (serial, 2 ranks, error deck). Validation section 17 (gui_check.py, headless API).
   No tkinter in this container -> browser approach on purpose.
+- Multiple Coulomb scattering of beam particles (2026-10-10, Alexander): `<beam>.scattering`,
+  scattering.Z / ion_charge / A / coulomb_log_ions / coulomb_log_electrons / factor / seed; needs
+  units.n0_cm3. In Beam::advance after the Lorentz kick: Gaussian dp_x, dp_y with variance
+  kappa [Z^2 n_i L_i + n_e L_e + (Z-zeta) n_i L_b] dt_kick, kappa = k_p r_e (q/m)^2; local n_e, n_i
+  from diag (D_NE0, D_NI0; ni = number density of positive species + neutralizing background);
+  |p| kept. RNG key = hash(seed, step) x hash(bits of x, y, xi, pz before the push): independent of
+  memory index -> MPI particles bit-identical, restart bit-identical. Section 18: free diffusion
+  <p^2> = D t within statistics, ion-channel emittance growth D/sqrt(2 gamma) to 0.8 %. Section 18
+  runs with 1 thread (threaded deposits change state bits -> other random numbers). CUDA compiles
+  (struct Scatter must be public: extended lambdas cannot capture private member types).
+  Observation: scatter_channel.in (pure ion channel, no electrons) has MPI-vs-serial field diffs of
+  3.6e-16 in bth even WITHOUT scattering (particles identical) - pre-existing, not investigated.
 - Paper v1 (arXiv submission planned Fri 2026-10-09): new subsection "Bubble closure on a fine
   axial mesh" (sec:closure, Fig. fig_closure from scripts/closure.sh + fig_closure.py), framed
   around the grid: uniform grids regularize the caustic implicitly over one cell, the fine axis

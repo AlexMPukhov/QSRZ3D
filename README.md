@@ -225,6 +225,28 @@ schemes agree with each other to ≤ 10⁻⁷.
 from the momentum before the push and applied implicitly as in the note. To
 enable it, set `pusher.rr_n0_cm3` to the physical plasma density.
 
+**Multiple Coulomb scattering** on the plasma (`<beam>.scattering = 1`, needs `units.n0_cm3`).
+Each push adds a Gaussian random kick to p_x and p_y (elastic: |p| is kept) with, per axis,
+
+  d⟨p_x²⟩/dt = k_p r_e (q/m)² [Z² n_i L_i + n_e L_e + (Z − ζ) n_i L_b]
+
+(units m c, ω_p⁻¹; n_i, n_e the local ion and free-electron densities of the slice in units of
+n₀, from the deposit, so the blowout's empty bubble and ion collapse are included). This is the
+small-angle Rutherford result d⟨θ²⟩/ds = 8π n Z² r_e² L/γ², written for the momentum, in which γ
+drops out. Z is the nuclear charge (`scattering.Z`), ζ the ion charge (`scattering.ion_charge`,
+default Z: fully ionized); bound electrons (Z − ζ per ion) scatter like free ones. Coulomb
+logarithms (computed per particle unless `scattering.coulomb_log_ions` /
+`coulomb_log_electrons` are given): L_i = ln(b_max / max(ƛ_C/γ, R_N)) with R_N = 1.2 fm A^{1/3}
+and b_max = c/ω_p for a fully ionized plasma or the Thomas–Fermi radius 0.885 a₀ Z^{−1/3} if bound
+electrons screen the nucleus; L_e = ln(b_max / (ƛ_C √(2/γ))) (recoil of the target electron),
+L_b the same with b_max = a₀. For a matched beam in an ion channel the emittance grows as
+dε_n/dt = D/√(2γ) with D the bracket above (Kirby et al.). Example: hydrogen at 10¹⁷ cm⁻³,
+L ≈ 23, gives D ≈ 4·10⁻⁹ and, at γ = 2·10⁴, dε_n/dz ≈ 10⁻¹¹ c/ω_p per c/ω_p (0.02 nm per metre):
+negligible; for heavy, partly ionized gases (Z² large) it is not. The random numbers come from a
+hash of the particle's state at the start of the step, so they do not depend on the particle's
+memory index or on MPI ranks; with several OpenMP threads the round-off of the atomic deposits
+changes the particle state and hence the random numbers (statistically equivalent runs).
+
 Leapfrog start-up uses a half kick. The quantity 1 − v_z is evaluated as
 (1+p⊥²)/(γ(γ+p_z)) to avoid cancellation.
 
@@ -595,6 +617,10 @@ The generated grid is written to `out/grid.txt` (j, r_j, h_j, V_j).
 | `pusher.beam` | `vay` | beam momentum pusher: `vay` \| `hc` \| `imp` \| `imp_rr` \| `boris`. Can be overridden per beam with `<beam>.pusher`. |
 | `pusher.rr_n0_cm3` | 0 | plasma density in cm⁻³. With `imp_rr`, a value > 0 switches on radiation reaction. |
 | `pusher.rr_scale` | 1 | multiplies the radiation-reaction strength (testing only) |
+| `<beam>.scattering` | 0 | multiple Coulomb scattering on the plasma ions and electrons (needs `units.n0_cm3`), see §1 |
+| `scattering.Z`, `scattering.ion_charge`, `scattering.A` | 1, Z, 1 (2Z for Z > 1) | nuclear charge, ion charge state, mass number of the background ions |
+| `scattering.coulomb_log_ions`, `scattering.coulomb_log_electrons` | computed | fixed Coulomb logarithms instead of the per-particle formulas |
+| `scattering.factor`, `scattering.seed` | 1, 1 | multiplies the scattering rate (testing only); random seed |
 
 **Function parser (HiPACE++ style).** Profiles can be given as formulas.
 - **Compilation.** Each expression is compiled once into a small stack
@@ -1084,6 +1110,15 @@ files with the main output):
 | Decelerating witness inside a rigid driver, γ 50 → 6, 32 steps per period, lag 1 and 6 | after the first lag steps, Δt ≤ 1.0003 × the step from the true γ at t_{n+1} (extrapolation works); during the first 6 steps up to 1.053 × (no rate known yet) |
 | Restart (serial; 2 ranks → 2 ranks) | bit-identical, incl. `timestep.txt` |
 | 2 ranks (lag 3) vs serial with lag 3 | fields and particles bit-identical, same Δt sequence |
+
+**Coulomb scattering** (section 18, `scatter_check.py`; rate multiplied by 10⁶ or 10⁵ to be
+measurable, fixed Coulomb logarithms):
+
+| test | result |
+|---|---|
+| Zero-emittance witness (n_b = 10⁻⁸) in a uniform plasma, t = 100, 10⁵ particles; Z = 1 and Z = 3, ζ = 1 | ⟨p_x²⟩/(D t) = 0.9972 / 0.9970, ⟨p_y²⟩/(D t) = 0.9996 / 0.9904 (statistical error 0.0045); γ kept to 10⁻¹² |
+| Matched witness in a pure ion channel, γ = 1000, t = 2000 | dε_n/dt = 1.0084 × D/√(2γ) |
+| Restart; 2 ranks vs serial | bit-identical; particles bit-identical (fields at round-off 4·10⁻¹⁶ as without scattering) |
 
 **GUI server** (section 17, `gui_check.py`, no browser): a run started through the API finishes and
 writes its `gui` frames every 2nd step with the requested fields, r ≤ 1 and every 2nd slice; the

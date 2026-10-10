@@ -166,9 +166,11 @@ Simulation::Simulation(const Config& cfg) : cfg_(cfg), comm_(Comm::world()) {
         if (smooth_a_ > 0) {
             std::cout << "Radial smoothing of the plasma sources: a = " << smooth_a_ << "\n";
         }
-        for (size_t b = 0; b < beams_.size(); ++b)
+        for (size_t b = 0; b < beams_.size(); ++b) {
             std::cout << "Beam '" << beams_[b]->name() << "': " << nglobal[b] << " macro-particles"
                       << (beams_[b]->rigid() ? " (rigid)" : "") << "\n";
+            if (beams_[b]->scattering()) std::cout << "  " << beams_[b]->scattering_description() << "\n";
+        }
         std::filesystem::create_directories(outdir_);
         grid_->write(outdir_ + "/grid.txt");
     }
@@ -1178,7 +1180,7 @@ void Simulation::run() {
         if (!last || chk) {
             const Real dkick = Real(0.5) * (dt_prev_ + cur_dt_), ddrift = cur_dt_;
             for (size_t b = 0; b < beams_.size(); ++b) {
-                beams_[b]->push(fld, dkick, ddrift, laser_ ? laser_->ponderomotive() : View3D());
+                beams_[b]->push(fld, dkick, ddrift, laser_ ? laser_->ponderomotive() : View3D(), diag, n);
                 if (P > 1) {
                     auto out = beams_[b]->extract_outgoing();
                     if (rank < P - 1) outbox_[b].insert(outbox_[b].end(), out.begin(), out.end());

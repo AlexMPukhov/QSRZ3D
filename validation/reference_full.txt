@@ -153,3 +153,14 @@ out_opmd_uni vs out_opmd_p2: iterations [0, 2, 4], max rel diff 0.00e+00
   2D map: 50 x 50 values, finite: True  OK
   beams: witness 7 steps  OK
   request without the token: HTTP 403  OK
+== 18. multiple Coulomb scattering of beam particles on the plasma ==
+  Z = 1, ion charge 1: <p_x^2>/(D t) = 0.9972, <p_y^2>/(D t) = 0.9996 (100000 particles, statistical error 0.0045); gamma conserved to 9e-13
+  Z = 3, ion charge 1: <p_x^2>/(D t) = 0.9970, <p_y^2>/(D t) = 0.9904 (100000 particles, statistical error 0.0045); gamma conserved to 9e-13
+  matched witness, gamma 1000: d eps_n/dt = 3.7811e-06, theory D/sqrt(2 gamma) = 3.7496e-06, ratio 1.0084  (eps_n 0.00977 -> 0.01732)
+ restart (expected: bit-identical, the random numbers depend on the particle state, not its index):
+  7 output files of the restarted run vs the uninterrupted run: max rel. difference 0.00e+00  OK
+ 2 ranks vs serial (expected: particles bit-identical; fields at round-off, as without scattering):
+  axis     max rel diff 0.00e+00  (axis_000000.txt col 0)
+  beamlog  max rel diff 8.98e-16  (beams.txt col 7)
+  dumps    max rel diff 0.00e+00  (beam_witness_000000.bin:x)
+  fields   max rel diff 3.57e-16  (fields_000005.bin:bth)

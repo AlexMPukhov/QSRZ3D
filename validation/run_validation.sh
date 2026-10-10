@@ -2,7 +2,7 @@
 # Validation suite of QUARZ (results quoted in README §7).
 #
 # usage: cd validation && ./run_validation.sh [options] [sections]
-#   sections   numbers 1..17 (default: all)
+#   sections   numbers 1..18 (default: all)
 #   -q         quick mode: reduced sizes, ~2-3 min on 2 cores (regression test after code changes)
 #   -j N       run N sections in parallel (OpenMP threads are split between them)
 #   -c         compare with the stored reference (reference_full.txt / reference_quick.txt):
@@ -15,7 +15,7 @@ cd "$(dirname "$0")"
 QS=../build/quarz; QUICK=0; JOBS=1; CMP=0; UPD=0
 while getopts "qj:cx:u" o; do case $o in q) QUICK=1;; j) JOBS=$OPTARG;; c) CMP=1;; x) QS=$OPTARG;; u) UPD=1;; *) exit 2;; esac; done
 shift $((OPTIND-1))
-SECTIONS=${*:-$(seq 1 17)}
+SECTIONS=${*:-$(seq 1 18)}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-false}
 NCORES=$(nproc); export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$(( NCORES / JOBS > 0 ? NCORES / JOBS : 1 ))}
 MPIRUN=""; if command -v mpirun > /dev/null 2>&1; then MPIRUN="mpirun --oversubscribe -np"; [ "$(id -u)" = "0" ] && MPIRUN="mpirun --allow-run-as-root --oversubscribe -np"; fi
@@ -347,6 +347,32 @@ sec17() {
     echo "== 17. GUI server (tools/quarz_gui.py, no browser) =="
     OMP_NUM_THREADS=1 python3 gui_check.py betatron.in $QS $(( 20000 + $$ % 20000 ))
     rm -rf out_gui out_gui_deck.in
+}
+
+sec18() {
+    echo "== 18. multiple Coulomb scattering of beam particles on the plasma =="
+    # one thread: the random numbers hash the particle state, which round-off of threaded deposits changes
+    export OMP_NUM_THREADS=1
+    local NP=$(q 100000 40000)
+    $QS scatter_free.in witness.nparticles=$NP > /dev/null
+    python3 scatter_check.py free out_scat_free 20 100 10 10 1 1 1e6
+    $QS scatter_free.in witness.nparticles=$NP scattering.Z=3 scattering.ion_charge=1 scattering.coulomb_log_electrons=7 \
+        output.dir=out_scat_free3 > /dev/null
+    python3 scatter_check.py free out_scat_free3 20 100 10 7 3 1 1e6
+    $QS scatter_channel.in time.steps=$(q 200 80) witness.nparticles=$NP > /dev/null
+    python3 scatter_check.py channel out_scat_ch 1000 10 1e5
+    local M="scatter_channel.in time.steps=10 output.beam_every=5 output.every=5 beams.xi_shape=ngp witness.nparticles=20000"
+    $QS $M checkpoint.every=4 checkpoint.keep=0 checkpoint.dir=out_sc_chk output.dir=out_sc_A > /dev/null
+    $QS $M restart.from=out_sc_chk/chk_000004 output.dir=out_sc_B > /dev/null
+    echo " restart (expected: bit-identical, the random numbers depend on the particle state, not its index):"
+    python3 restart_check.py out_sc_A out_sc_B 0 || true
+    if [ -n "$MPIRUN" ]; then
+        $MPIRUN 2 $QS $M output.dir=out_sc_P > /dev/null
+        echo " 2 ranks vs serial (expected: particles bit-identical; fields at round-off, as without scattering):"
+        python3 cmp_runs.py out_sc_A out_sc_P 1e-14 || true
+    fi
+    unset OMP_NUM_THREADS
+    rm -rf out_scat_* out_sc_*
 }
 
 MODE=$(q full quick); TMP=$(mktemp -d); T0=$(date +%s)
